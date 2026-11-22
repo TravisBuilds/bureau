@@ -125,16 +125,16 @@ export default function ConnectAgentPage() {
               <h3 className="text-lg font-semibold text-slate-900 mb-3">Usage Example</h3>
               <div className="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto">
                 <pre className="text-sm">{`curl -X POST http://localhost:3000/api/ingest \\
-  -H "Authorization: Bearer ${latestToken?.token || 'YOUR_TOKEN'}" \\
+  -H "Authorization: Bearer ${justCreatedToken || (latestToken ? `bureau_••••${latestToken.token.slice(-4)}` : 'YOUR_TOKEN')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "type": "intake",
     "stream": "ember",
-    "content": "Published Ep13: 34 views, $31.42 cost",
+    "content": "Published Ep12: 49 views, $30.93 cost",
     "metadata": {
-      "output_id": "ep13",
-      "cost_usd": 31.42,
-      "views": 34
+      "output_id": "ep12",
+      "cost_usd": 30.93,
+      "views": 49
     }
   }'`}</pre>
               </div>

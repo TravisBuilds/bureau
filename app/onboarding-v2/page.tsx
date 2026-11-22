@@ -226,10 +226,13 @@ export default function OnboardingV2Page() {
                   <div className="flex-1">
                     <div className="font-medium">{attempt.description}</div>
                     <div className="text-sm text-gray-600">
-                      {attempt.costUsd && `$${attempt.costUsd.toFixed(2)}`}
-                      {attempt.hfCredits && `${attempt.hfCredits.toLocaleString()} HF credits`}
-                      {attempt.elChars && `${attempt.elChars.toLocaleString()} EL chars`}
+                      {attempt.costUsd !== undefined && attempt.costUsd > 0 && `$${attempt.costUsd.toFixed(2)}`}
+                      {attempt.costUsd !== undefined && attempt.costUsd > 0 && (attempt.hfCredits || attempt.elChars) && ' • '}
+                      {attempt.hfCredits !== undefined && attempt.hfCredits > 0 && `${attempt.hfCredits.toLocaleString()} HF credits`}
+                      {attempt.hfCredits !== undefined && attempt.hfCredits > 0 && attempt.elChars && ' • '}
+                      {attempt.elChars !== undefined && attempt.elChars > 0 && `${attempt.elChars.toLocaleString()} EL chars`}
                       {attempt.failed && <span className="ml-2 text-red-600">(Failed)</span>}
+                      {attempt.costUsd === 0 && !attempt.hfCredits && !attempt.elChars && '$0.00'}
                     </div>
                   </div>
                 </label>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Briefcase, FileText, Rocket } from 'lucide-react';
 import StreamDataEntry from '@/components/StreamDataEntry';
+import PrototypeBanner from '@/components/PrototypeBanner';
 
 type StreamType = 'day-job' | 'contract' | 'project';
 
@@ -14,6 +15,7 @@ export default function AddStreamPage() {
   if (!selectedType) {
     return (
       <div className="min-h-screen bg-white">
+        <PrototypeBanner />
         <header className="border-b border-slate-200">
           <div className="max-w-4xl mx-auto px-6 py-6">
             <button
@@ -79,6 +81,7 @@ export default function AddStreamPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      <PrototypeBanner />
       <header className="border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-6 py-6">
           <button

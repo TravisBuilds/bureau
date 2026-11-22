@@ -4,6 +4,7 @@ import { useState } from 'react';
 import IntakeReviewModal from '@/components/IntakeReviewModal';
 import { IntakeResponse } from '@/lib/intake-types';
 import { MockProvider } from '@/lib/providers/MockProvider';
+import PrototypeBanner from '@/components/PrototypeBanner';
 
 export default function IntakeDemoPage() {
   const [intake, setIntake] = useState<IntakeResponse | null>(null);
@@ -17,8 +18,9 @@ export default function IntakeDemoPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white p-12">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-white">
+      <PrototypeBanner />
+      <div className="max-w-4xl mx-auto p-12">
         <h1 className="text-3xl font-bold text-slate-900 mb-6">Intake Review Demo</h1>
         <p className="text-slate-600 mb-8">
           This page demonstrates the agent intake review modal with SAMPLE data from MockProvider.

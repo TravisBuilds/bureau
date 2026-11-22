@@ -81,11 +81,16 @@ export default function IntakeReviewModal({ intake, onApprove, onReject, onClose
 }
 
 function DayJobReview({ data }: { data: DayJobIntake }) {
+  const avgPay = data.monthlyPayHistory.reduce((sum, m) => sum + m.grossPay, 0) / data.monthlyPayHistory.length;
+  const minPay = Math.min(...data.monthlyPayHistory.map(m => m.grossPay));
+  const maxPay = Math.max(...data.monthlyPayHistory.map(m => m.grossPay));
+  
   return (
     <div className="space-y-6">
+      {/* Basic Info */}
       <div className="grid grid-cols-2 gap-6">
         <div>
-          <label className="text-sm font-medium text-slate-700">Employer</label>
+          <label className="text-sm font-medium text-slate-700">Employer (Agency)</label>
           <div className="mt-1 text-slate-900">{data.employer}</div>
         </div>
         <div>
@@ -94,63 +99,97 @@ function DayJobReview({ data }: { data: DayJobIntake }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <div>
-          <label className="text-sm font-medium text-slate-700">Pay Type</label>
-          <div className="mt-1 text-slate-900 capitalize">{data.payType}</div>
-        </div>
-        <div>
-          <label className="text-sm font-medium text-slate-700">
-            {data.payType === 'salary' ? 'Annual Salary' : 'Hourly Rate'}
-          </label>
-          <div className="mt-1 text-slate-900 font-semibold">
-            ${data.payType === 'salary' ? data.annualSalary?.toLocaleString() : data.hourlyRate}
-            {data.payType === 'hourly' && '/hr'}
-          </div>
-        </div>
-      </div>
-
+      {/* Pay Structure */}
       <div>
-        <label className="text-sm font-medium text-slate-700">Hours per Week</label>
-        <div className="mt-1 text-slate-900">{data.hoursPerWeek} hours</div>
+        <label className="text-sm font-medium text-slate-700 mb-2 block">Pay Structure</label>
+        <div className="p-3 bg-amber-50 rounded-lg">
+          <div className="text-sm text-amber-900">
+            <strong>Variable income</strong> based on billable hours and case load
+          </div>
+          {data.payStructure.basePay && (
+            <div className="text-sm text-amber-800 mt-1">
+              Base: ${data.payStructure.basePay.toLocaleString()}/mo + variable
+            </div>
+          )}
+        </div>
       </div>
 
-      {data.recentPayStubs && data.recentPayStubs.length > 0 && (
-        <div>
-          <label className="text-sm font-medium text-slate-700 mb-3 block">Recent Pay Stubs</label>
-          <div className="space-y-2">
-            {data.recentPayStubs.map((stub, i) => (
-              <div key={i} className="p-3 bg-slate-50 rounded-lg flex items-center justify-between">
+      {/* 6-Month Pay History */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 mb-3 block">6-Month Pay History</label>
+        <div className="space-y-2">
+          {data.monthlyPayHistory.map((month, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="text-sm text-slate-600 w-20">
+                {new Date(month.month + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
+              </div>
+              <div className="flex-1">
+                <div className="h-6 bg-slate-100 rounded overflow-hidden">
+                  <div 
+                    className="h-full bg-green-500"
+                    style={{ width: `${(month.grossPay / maxPay) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <div className="text-sm font-semibold text-slate-900 w-24 text-right">
+                ${month.grossPay.toLocaleString()}
+              </div>
+              <div className="text-xs text-slate-500 w-20">
+                {month.caseCount} cases
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 text-sm text-slate-600">
+          Range: ${minPay.toLocaleString()} – ${maxPay.toLocaleString()} • 
+          Avg: ${avgPay.toLocaleString()}/mo
+        </div>
+      </div>
+
+      {/* End Clients */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 mb-2 block">End Clients</label>
+        <div className="flex gap-2">
+          {data.endClients.map((client, i) => (
+            <div key={i} className={`px-3 py-1 rounded text-sm ${
+              client.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'
+            }`}>
+              {client.name}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Current Cases */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 mb-3 block">Current Cases</label>
+        <div className="space-y-2">
+          {data.cases.filter(c => c.status === 'active').map((case_, i) => (
+            <div key={i} className="p-3 bg-slate-50 rounded-lg">
+              <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-sm font-medium text-slate-900">
-                    {stub.period}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">{stub.date}</div>
+                  <div className="font-medium text-slate-900">{case_.caseName}</div>
+                  <div className="text-sm text-slate-500">{case_.clientName}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-semibold text-slate-900">
-                    ${stub.grossPay.toLocaleString()} gross
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    ${stub.netPay.toLocaleString()} net
+                    {case_.billableHours}h billed
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
 
-      {data.benefits && data.benefits.length > 0 && (
-        <div>
-          <label className="text-sm font-medium text-slate-700 mb-2 block">Benefits</label>
-          <ul className="space-y-1">
-            {data.benefits.map((benefit, i) => (
-              <li key={i} className="text-sm text-slate-600">• {benefit}</li>
-            ))}
-          </ul>
+      {/* Utilization */}
+      <div>
+        <label className="text-sm font-medium text-slate-700">Utilization</label>
+        <div className="mt-1 text-slate-900">
+          Current: {data.utilization.currentMonth.toFixed(1)}% • 
+          6-mo avg: {data.utilization.average6Month.toFixed(1)}%
         </div>
-      )}
+      </div>
     </div>
   );
 }

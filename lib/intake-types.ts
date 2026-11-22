@@ -5,21 +5,58 @@
 
 export type StreamType = 'day-job' | 'contract' | 'project';
 
-// Day Job Intake - What agents send about a 9-5
+// Day Job Intake - What agents send about agency work (variable income)
 export interface DayJobIntake {
-  employer: string;
-  role: string;
-  payType: 'salary' | 'hourly';
-  annualSalary?: number;
-  hourlyRate?: number;
-  payFrequency: 'weekly' | 'biweekly' | 'monthly';
-  hoursPerWeek: number;
+  employer: string;              // The agency
+  role: string;                  // e.g., "Senior Designer"
+  payStructure: {
+    basePay?: number;            // Fixed monthly component (if any)
+    variablePay: boolean;        // True for agency designers
+    payType: 'salary-variable' | 'hourly' | 'case-based';
+  };
+  
+  // End clients (agencies source work from big clients)
+  endClients: Array<{
+    name: string;                // e.g., "Google", "Amazon", "Meta"
+    isActive: boolean;
+  }>;
+  
+  // Cases/assignments from end clients
+  cases: Array<{
+    id: string;
+    clientName: string;          // Which end client
+    caseName: string;            // Project name
+    startDate: string;
+    endDate?: string;
+    hoursLogged: number;
+    billableHours: number;
+    status: 'active' | 'completed' | 'on-hold';
+  }>;
+  
+  // Utilization and billing
+  utilization: {
+    currentMonth: number;        // % of hours that are billable
+    average6Month: number;
+  };
+  
+  // Monthly pay history (varying amounts)
+  monthlyPayHistory: Array<{
+    month: string;               // YYYY-MM
+    grossPay: number;
+    netPay: number;
+    hoursLogged: number;
+    billableHours: number;
+    caseCount: number;
+  }>;
+  
+  // Recent pay stubs (amounts vary)
   recentPayStubs: Array<{
     date: string;
     grossPay: number;
     netPay: number;
     period: string;
   }>;
+  
   benefits?: string[];
 }
 

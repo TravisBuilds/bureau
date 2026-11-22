@@ -172,33 +172,92 @@ export class MockProvider implements AgentProvider {
   ): Promise<IntakeResponse> {
     // Return SAMPLE data clearly labeled
     if (streamType === 'day-job') {
+      // SAMPLE: Agency designer with variable income based on case load
+      const monthlyPay = [
+        { month: '2026-06', gross: 7200, net: 5280, hours: 160, billable: 128, cases: 2 },
+        { month: '2026-07', gross: 8400, net: 6160, hours: 168, billable: 148, cases: 3 },
+        { month: '2026-08', gross: 6800, net: 4990, hours: 152, billable: 112, cases: 2 },
+        { month: '2026-09', gross: 9100, net: 6680, hours: 176, billable: 158, cases: 4 },
+        { month: '2026-10', gross: 7800, net: 5720, hours: 160, billable: 136, cases: 3 },
+        { month: '2026-11', gross: 8200, net: 6020, hours: 168, billable: 142, cases: 3 },
+      ];
+      
       return {
         streamId,
         streamType: 'day-job',
         data: {
-          employer: 'SAMPLE Tech Corp',
-          role: 'SAMPLE Senior Designer',
-          payType: 'salary',
-          annualSalary: 95000,
-          payFrequency: 'biweekly',
-          hoursPerWeek: 40,
+          employer: 'SAMPLE Creative Agency',
+          role: 'Senior Designer',
+          payStructure: {
+            basePay: 4000,
+            variablePay: true,
+            payType: 'salary-variable' as const,
+          },
+          endClients: [
+            { name: 'SAMPLE: Google', isActive: true },
+            { name: 'SAMPLE: Amazon', isActive: true },
+            { name: 'SAMPLE: Meta', isActive: false },
+          ],
+          cases: [
+            {
+              id: 'case-001',
+              clientName: 'SAMPLE: Google',
+              caseName: 'SAMPLE: Search redesign',
+              startDate: '2026-10-15',
+              endDate: '2026-11-30',
+              hoursLogged: 48,
+              billableHours: 48,
+              status: 'active',
+            },
+            {
+              id: 'case-002',
+              clientName: 'SAMPLE: Amazon',
+              caseName: 'SAMPLE: Prime branding',
+              startDate: '2026-11-01',
+              hoursLogged: 32,
+              billableHours: 32,
+              status: 'active',
+            },
+            {
+              id: 'case-003',
+              clientName: 'SAMPLE: Google',
+              caseName: 'SAMPLE: Ads campaign',
+              startDate: '2026-09-20',
+              endDate: '2026-10-30',
+              hoursLogged: 56,
+              billableHours: 56,
+              status: 'completed',
+            },
+          ],
+          utilization: {
+            currentMonth: 84.5,  // 142 billable / 168 total
+            average6Month: 81.3,
+          },
+          monthlyPayHistory: monthlyPay.map(m => ({
+            month: m.month,
+            grossPay: m.gross,
+            netPay: m.net,
+            hoursLogged: m.hours,
+            billableHours: m.billable,
+            caseCount: m.cases,
+          })),
           recentPayStubs: [
             {
               date: '2026-11-15',
-              grossPay: 3653.85,
-              netPay: 2680.00,
+              grossPay: 4100,  // Variable amount
+              netPay: 3010,
               period: '2026-11-01 to 2026-11-15',
             },
             {
               date: '2026-10-31',
-              grossPay: 3653.85,
-              netPay: 2680.00,
+              grossPay: 3900,  // Variable amount
+              netPay: 2860,
               period: '2026-10-16 to 2026-10-31',
             },
           ],
           benefits: ['SAMPLE Health insurance', 'SAMPLE 401k match (3%)'],
         },
-        dataSource: 'Mock Agent Alpha (SAMPLE DATA - not real)',
+        dataSource: 'Mock Agent Alpha (SAMPLE DATA - not real employment)',
         asOf: new Date().toISOString(),
         requiresReview: true,
       };

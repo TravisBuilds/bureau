@@ -87,78 +87,53 @@ export default function TopFloorPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
-        {/* Can I Quit My 9-5? - LEADING SECTION */}
-        <div className="mb-16">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-lg font-medium text-slate-900">Can I quit my 9-5?</h2>
-            {monthlyNeed !== null && (
-              <button
-                onClick={handleSetMonthlyNeed}
-                className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-2"
-              >
-                <Settings className="w-4 h-4" />
-                Update need
-              </button>
-            )}
+        {/* Financial Overview - Comprehensive Dashboard */}
+        <div className="mb-12">
+          <h2 className="text-lg font-medium text-slate-900 mb-6">Financial Overview</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            {/* Total Income */}
+            <div className="p-4 bg-white border border-slate-200 rounded-lg">
+              <div className="text-sm text-slate-500 mb-1">Total Income</div>
+              <div className="text-2xl font-semibold text-slate-900">
+                ${totalIncome.toLocaleString()}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">per month</div>
+            </div>
+
+            {/* Total Costs */}
+            <div className="p-4 bg-white border border-slate-200 rounded-lg">
+              <div className="text-sm text-slate-500 mb-1">Total Costs</div>
+              <div className="text-2xl font-semibold text-slate-900">
+                ${totalCosts.toLocaleString()}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">per month</div>
+            </div>
+
+            {/* Net */}
+            <div className="p-4 bg-white border border-slate-200 rounded-lg">
+              <div className="text-sm text-slate-500 mb-1">Net</div>
+              <div className={`text-2xl font-semibold ${netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                ${netIncome.toLocaleString()}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">per month</div>
+            </div>
+
+            {/* Active Streams */}
+            <div className="p-4 bg-white border border-slate-200 rounded-lg">
+              <div className="text-sm text-slate-500 mb-1">Active Streams</div>
+              <div className="text-2xl font-semibold text-slate-900">
+                {connectedRealStreams.length}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">of {realStreams.length} total</div>
+            </div>
           </div>
 
-          {monthlyNeed === null ? (
-            <button
-              onClick={handleSetMonthlyNeed}
-              className="p-8 border-2 border-dashed border-slate-300 rounded-xl hover:border-highstreet-purple hover:bg-slate-50 transition-all w-full text-center"
-            >
-              <p className="text-slate-600 mb-2">Set your monthly need to see if you can quit</p>
-              <p className="text-sm text-slate-400">How much do you need per month to cover living and projects?</p>
-            </button>
-          ) : (
-            <div className="space-y-6">
-              {/* The Answer */}
-              <div>
-                {otherIncome >= monthlyNeed ? (
-                  <div className="text-4xl font-semibold text-green-600 mb-2">
-                    Yes, you can quit
-                  </div>
-                ) : (
-                  <div className="text-4xl font-semibold text-slate-900 mb-2">
-                    Not yet
-                  </div>
-                )}
-                <p className="text-slate-600">
-                  Other streams cover{' '}
-                  <span className="font-semibold">
-                    {monthlyNeed > 0 ? Math.round((otherIncome / monthlyNeed) * 100) : 0}%
-                  </span>
-                  {' '}of your ${monthlyNeed.toLocaleString()} monthly need
-                </p>
-              </div>
-
-              {/* Gap and Details */}
-              {otherIncome < monthlyNeed && (
-                <div className="flex items-baseline gap-12 pt-6 border-t border-slate-200">
-                  <div>
-                    <div className="text-2xl font-semibold text-slate-900">
-                      ${(monthlyNeed - otherIncome).toLocaleString()}
-                    </div>
-                    <div className="text-sm text-slate-500 mt-1">Gap to close</div>
-                  </div>
-                  
-                  <div>
-                    <div className="text-2xl font-semibold text-slate-900">
-                      ${otherIncome.toLocaleString()}
-                    </div>
-                    <div className="text-sm text-slate-500 mt-1">From other streams</div>
-                  </div>
-                  
-                  <div>
-                    <div className="text-2xl font-semibold text-slate-900">
-                      {nonDayJobStreams.length}
-                    </div>
-                    <div className="text-sm text-slate-500 mt-1">Active streams</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Stream Breakdown */}
+          <div className="text-sm text-slate-600">
+            <strong>Income:</strong> Day job + contracts + projects • 
+            <strong className="ml-2">Costs:</strong> Agent usage (Grok, OpenAI) + APIs (Places, Gemini) + subscriptions
+          </div>
         </div>
 
         {/* Weekly Plan */}

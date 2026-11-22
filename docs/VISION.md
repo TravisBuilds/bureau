@@ -2,9 +2,9 @@
 
 ## The Big Picture
 
-**Bureau is built for a future where someone has multiple income streams**, not just one job. The office building metaphor: the top floor is where the big brain sits, with a dashboard of all the little projects that fill the floors beneath it.
+**Bureau is built for a future where someone has multiple income streams**, not just one job. The office building metaphor: the top floor is where the big brain sits, with a comprehensive dashboard of all the streams that fill the floors beneath it.
 
-Eventually, from the top floor, you can see at a glance **whether you can quit that 9-5 and live off your other income streams**.
+From the top floor, you see at a glance: income in (day job, contracts, projects), costs out (agent usage, APIs, subscriptions), net per stream and overall, time spent, trends, and what needs attention. The founder draws their own conclusions from the numbers.
 
 ## Three Income Stream Types
 
@@ -44,24 +44,33 @@ Side projects with users, agents, and metrics. The passion becoming income.
 
 **Agent population:** Agent sends user metrics, revenue, costs, decisions with priority.
 
-## Top Floor Analysis: "Can I Quit My 9-5?"
+## Top Floor: Comprehensive Business Dashboard
 
-The leading section shows:
-- **The Answer:** "Yes, you can quit" or "Not yet"
-- **Coverage:** What % of your monthly need comes from non-day-job streams
-- **The Gap:** How much more you need to close
-- **Active Streams:** How many streams contribute
+The top floor shows the full financial picture across all streams:
 
-**Calculation:**
-- Founder sets their monthly need (living + project costs)
-- Bureau sums net income (income - costs) from all non-day-job streams
-- Coverage = (other streams net) / monthly need
-- Gap = monthly need - other streams net
+**Income In:**
+- Day job variable pay (trailing average + range)
+- Contract invoices and rates
+- Project revenue
 
-**Empty states:**
-- No monthly need set → prompt to set it
-- No connected streams → "Connect streams to see analysis"
-- Only day-job connected → "Add other streams to see if you can quit"
+**Costs Out:**
+- Per-bot/agent usage: Grok credits, OpenAI tokens
+- Cloud APIs: Google Places, Gemini
+- Subscriptions and services
+
+**Key Metrics:**
+- Total income, costs, net per month
+- Net per stream
+- Active vs total streams
+- Time spent per stream
+- Trends and variances
+
+**What Needs Attention:**
+- Weekly plan card: top priorities by expected payoff/hour
+- Automation handled count: "Bureau handled 12 things this week"
+- Needs-you queue: escalations from automation
+
+**Optional:** Founder can set a "monthly need" for neutral comparison against total stream income, but this is not the headline or primary focus.
 
 ## The Building Stack
 

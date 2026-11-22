@@ -1,9 +1,21 @@
 /**
  * Bureau - Agent Provider Interface
  * Real auth and task dispatch for connected agents
+ * 
+ * Key principle: Provider differences stay inside the adapter.
+ * UI sees capabilities (code, research), not brands (ChatGPT, Claude).
  */
 
 export type ProviderType = 'openai' | 'cursor-agents' | 'webhook' | 'mcp' | 'mock';
+
+// Agent capabilities (what they can do)
+export type Capability = 'code' | 'research' | 'content' | 'ops' | 'design' | 'data' | 'testing';
+
+// Cost tier for routing decisions
+export type CostTier = 'cheap' | 'moderate' | 'expensive';
+
+// Speed tier for routing decisions
+export type SpeedTier = 'fast' | 'medium' | 'slow';
 
 export interface AgentCredentials {
   providerId: string;
@@ -18,9 +30,21 @@ export interface ConnectedAgent {
   providerId: string;
   providerType: ProviderType;
   displayName: string;
-  capabilities: string[];
+  
+  // What this agent can do
+  capabilities: Capability[];
+  
+  // Routing metadata
+  costTier: CostTier;
+  speedTier: SpeedTier;
+  
+  // Health
   status: 'connected' | 'disconnected' | 'error';
   lastActivity?: string;
+  
+  // Budget (per agent, not per stream)
+  monthlyBudget?: number;
+  spent?: number;
 }
 
 export interface AgentTask {

@@ -116,7 +116,7 @@ CREATE TABLE weekly_reviews (
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   stream_id UUID NOT NULL REFERENCES streams(id) ON DELETE CASCADE,
   objective TEXT NOT NULL,
-  constraint TEXT NOT NULL,
+  constraint_text TEXT NOT NULL,
   moves JSONB NOT NULL,
   chosen_move INTEGER,
   chosen_at TIMESTAMPTZ,

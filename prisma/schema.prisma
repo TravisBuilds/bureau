@@ -174,15 +174,15 @@ model PilotInvite {
 }
 
 model WeeklyReview {
-  id          String   @id @default(uuid())
-  workspaceId String   @map("workspace_id")
-  streamId    String   @map("stream_id")
-  objective   String
-  constraint  String
-  moves       Json // array of {title, signal, reasoning, prediction}
-  chosenMove  Int?     @map("chosen_move") // index of chosen move
-  chosenAt    DateTime? @map("chosen_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  workspaceId    String   @map("workspace_id")
+  streamId       String   @map("stream_id")
+  objective      String
+  constraintText String   @map("constraint_text")
+  moves          Json // array of {title, signal, reasoning, prediction}
+  chosenMove     Int?     @map("chosen_move") // index of chosen move
+  chosenAt       DateTime? @map("chosen_at")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stream    Stream    @relation(fields: [streamId], references: [id], onDelete: Cascade)

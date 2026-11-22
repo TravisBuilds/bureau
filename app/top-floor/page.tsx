@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Building2, Plus, Settings } from 'lucide-react';
 import { travisStreams, type IncomeStream } from '@/lib/travis-streams-seed';
 import { useRouter } from 'next/navigation';
+import PrototypeBanner from '@/components/PrototypeBanner';
+import WeeklyPlanCard from '@/components/WeeklyPlanCard';
 
 export default function TopFloorPage() {
   const router = useRouter();
@@ -11,15 +13,13 @@ export default function TopFloorPage() {
   const [monthlyNeed, setMonthlyNeed] = useState<number | null>(null);
   const [showNeedDialog, setShowNeedDialog] = useState(false);
 
-  const connectedStreams = streams.filter(s => s.connected);
-  
-  // Calculate totals from connected streams only
-  const totalIncome = connectedStreams.reduce((sum, s) => sum + (s.monthlyIncome || 0), 0);
-  const totalCosts = connectedStreams.reduce((sum, s) => sum + (s.monthlyCosts || 0), 0);
+  // Calculate totals from connected REAL streams only (exclude SAMPLE)
+  const totalIncome = connectedRealStreams.reduce((sum, s) => sum + (s.monthlyIncome || 0), 0);
+  const totalCosts = connectedRealStreams.reduce((sum, s) => sum + (s.monthlyCosts || 0), 0);
   const netIncome = totalIncome - totalCosts;
   
   // Non-day-job streams for "can I quit" analysis
-  const nonDayJobStreams = connectedStreams.filter(s => s.type !== 'day-job');
+  const nonDayJobStreams = connectedRealStreams.filter(s => s.type !== 'day-job');
   const otherIncome = nonDayJobStreams.reduce((sum, s) => {
     const income = s.monthlyIncome || 0;
     const costs = s.monthlyCosts || 0;
@@ -55,8 +55,15 @@ export default function TopFloorPage() {
     }
   };
 
+  // Exclude SAMPLE streams from Travis's real totals
+  const realStreams = streams.filter(s => !s.id.includes('sample'));
+  const connectedRealStreams = realStreams.filter(s => s.connected);
+
   return (
     <div className="min-h-screen bg-white">
+      {/* PROTOTYPE BANNER */}
+      <PrototypeBanner />
+      
       {/* Header */}
       <header className="border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 py-6">
@@ -152,6 +159,11 @@ export default function TopFloorPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Weekly Plan */}
+        <div className="mb-12">
+          <WeeklyPlanCard streams={realStreams} availableHours={10} />
         </div>
 
         {/* Building Stack - All Floors */}

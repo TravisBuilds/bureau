@@ -156,6 +156,28 @@ export const travisStreams: IncomeStream[] = [
     lastActivity: 'Never',
     status: 'not-connected',
   },
+  
+  // 8. SAMPLE: Corner Bakery - FOR MICRO-FUNDING DEMO
+  {
+    id: 'sample-corner-bakery',
+    name: 'Sample: Corner Bakery',
+    type: 'project',
+    description: 'SAMPLE small bakery for micro-funding demo',
+    agents: [
+      { name: 'SAMPLE Bakery Agent', role: 'Operations', connected: true },
+    ],
+    connected: true,
+    signal: 'keep',
+    signalReason: 'SAMPLE: Steady revenue, good margin',
+    monthlyIncome: 4200,
+    monthlyCosts: 2800,
+    monthlyHours: 160,
+    users: 85,
+    lastActivity: '1 hour ago',
+    status: 'active',
+    dataSource: 'SAMPLE Bakery Agent (SAMPLE DATA - not real)',
+    dataAsOf: new Date().toISOString(),
+  },
 ];
 
 /**

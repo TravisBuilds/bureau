@@ -21,6 +21,8 @@ interface OutputCost {
   costPer1kViews: number | null;
   created_at: string;
   published_at: string | null;
+  lifecycle?: 'draft' | 'finished' | 'published' | 'abandoned';
+  cost_coverage_note?: string;
 }
 
 interface Summary {
@@ -158,7 +160,7 @@ export default function StreamCostsPage({ params }: { params: Promise<{ id: stri
           >
             ← Back
           </button>
-          <h1 className="text-2xl font-semibold text-slate-900">Cost-per-Output</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Output Costs</h1>
         </div>
         
         {/* Summary cards */}
@@ -189,6 +191,7 @@ export default function StreamCostsPage({ params }: { params: Promise<{ id: stri
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="text-left py-3 px-4 text-xs font-medium text-slate-600">Output</th>
+                <th className="text-center py-3 px-4 text-xs font-medium text-slate-600">Status</th>
                 <th className="text-right py-3 px-4 text-xs font-medium text-slate-600">Cost</th>
                 <th className="text-right py-3 px-4 text-xs font-medium text-slate-600">Views</th>
                 <th className="text-right py-3 px-4 text-xs font-medium text-slate-600">$/View</th>
@@ -197,44 +200,69 @@ export default function StreamCostsPage({ params }: { params: Promise<{ id: stri
               </tr>
             </thead>
             <tbody>
-              {outputs.map((output) => (
-                <tr key={output.output_id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-4 px-4">
-                    <div className="font-medium text-slate-900">{output.output_name}</div>
-                    <div className="text-xs text-slate-500">
-                      {output.output_type}
-                      {output.higgsfield_credits && (
-                        <span className="ml-2">• {output.higgsfield_credits.toFixed(1)} HF credits</span>
-                      )}
-                      {output.elevenlabs_characters && (
-                        <span className="ml-2">• {output.elevenlabs_characters.toLocaleString()} EL chars</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="text-right py-4 px-4">
-                    <div className="font-semibold text-slate-900">
-                      ${output.generation_cost_usd.toFixed(2)}
-                    </div>
-                    {output.failed_renders_cost_usd > 0 && (
-                      <div className="text-xs text-red-600">
-                        +${output.failed_renders_cost_usd.toFixed(2)} failed
+              {outputs.map((output) => {
+                const isPublished = output.lifecycle === 'published' || !output.lifecycle;
+                const lifecycleLabels = {
+                  draft: { text: 'Draft', color: 'text-slate-600 bg-slate-100' },
+                  finished: { text: 'Ready', color: 'text-blue-600 bg-blue-100' },
+                  published: { text: 'Live', color: 'text-green-600 bg-green-100' },
+                  abandoned: { text: 'Abandoned', color: 'text-gray-500 bg-gray-100' },
+                };
+                const lifecycle = output.lifecycle || 'published';
+                
+                return (
+                  <tr key={output.output_id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-4 px-4">
+                      <div className="font-medium text-slate-900">{output.output_name}</div>
+                      <div className="text-xs text-slate-500">
+                        {output.output_type}
+                        {output.higgsfield_credits && (
+                          <span className="ml-2">• {output.higgsfield_credits.toFixed(1)} HF credits</span>
+                        )}
+                        {output.elevenlabs_characters && (
+                          <span className="ml-2">• {output.elevenlabs_characters.toLocaleString()} EL chars</span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                  <td className="text-right py-4 px-4 text-slate-700">
-                    {output.views !== null ? output.views.toLocaleString() : '—'}
-                  </td>
-                  <td className="text-right py-4 px-4 font-medium text-slate-900">
-                    {output.costPerView !== null ? `$${output.costPerView.toFixed(3)}` : '—'}
-                  </td>
-                  <td className="text-right py-4 px-4 text-slate-700">
-                    {output.costPer1kViews !== null ? `$${output.costPer1kViews.toFixed(2)}` : '—'}
-                  </td>
-                  <td className="text-center py-4 px-4">
-                    <TrustBadge level={output.trust_level} sources={output.verified_sources} />
-                  </td>
-                </tr>
-              ))}
+                      {output.cost_coverage_note && (
+                        <div className="text-xs text-slate-400 mt-1">
+                          💡 {output.cost_coverage_note}
+                        </div>
+                      )}
+                    </td>
+                    <td className="text-center py-4 px-4">
+                      <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${lifecycleLabels[lifecycle].color}`}>
+                        {lifecycleLabels[lifecycle].text}
+                      </span>
+                    </td>
+                    <td className="text-right py-4 px-4">
+                      <div className="font-semibold text-slate-900">
+                        ${output.generation_cost_usd.toFixed(2)}
+                      </div>
+                      {output.failed_renders_cost_usd > 0 && (
+                        <div className="text-xs text-red-600">
+                          +${output.failed_renders_cost_usd.toFixed(2)} failed
+                        </div>
+                      )}
+                    </td>
+                    <td className="text-right py-4 px-4 text-slate-700">
+                      {isPublished ? (
+                        output.views !== null ? output.views.toLocaleString() : '—'
+                      ) : (
+                        <span className="text-xs text-slate-400">Not yet published</span>
+                      )}
+                    </td>
+                    <td className="text-right py-4 px-4 font-medium text-slate-900">
+                      {isPublished && output.costPerView !== null ? `$${output.costPerView.toFixed(3)}` : '—'}
+                    </td>
+                    <td className="text-right py-4 px-4 text-slate-700">
+                      {isPublished && output.costPer1kViews !== null ? `$${output.costPer1kViews.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="text-center py-4 px-4">
+                      <TrustBadge level={output.trust_level} sources={output.verified_sources} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -79,7 +79,7 @@ export default function SignUpPage() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Welcome to Bureau</h1>
-          <p className="text-slate-600">Cost-per-output P&L for creators</p>
+          <p className="text-slate-600">Know what your last video cost before you make the next one</p>
         </div>
         
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-4">

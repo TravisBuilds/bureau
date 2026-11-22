@@ -304,12 +304,12 @@ export default function OnboardingV2Page() {
               <div className="mt-6 p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
                 💡 This cost includes: assigned cash charges ({assigned.size} items)
                 {(assignedHF > 0 || assignedEL > 0) && (
-                  <>, native credits ({assignedHF > 0 ? 'HF' : ''} {assignedEL > 0 ? 'EL' : ''}), and failed attempts</>
+                  <>, native credits ({[assignedHF > 0 && 'HF', assignedEL > 0 && 'EL'].filter(Boolean).join(', ')})</>
                 )}
                 {assignedHF === 0 && assignedEL === 0 && (
-                  <>. Credits and failed attempts not recorded</>
+                  <>. Credits not recorded</>
                 )}.
-                {' '}Unallocated charges ({unallocated}) are not included.
+                {' '}Failed attempts and unallocated charges ({unallocated}) are not included.
               </div>
             </div>
 

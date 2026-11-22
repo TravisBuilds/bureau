@@ -1,0 +1,336 @@
+// Bureau Database Schema
+// Local Supabase (Postgres) with Row-Level Security
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core tables
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by") // references auth.users (Supabase)
+
+  members       WorkspaceMember[]
+  streams       Stream[]
+  connections   Connection[]
+  ingestTokens  IngestToken[]     @relation("WorkspaceIngestTokens")
+  ingestLogs    IngestLog[]
+  weeklyReviews WeeklyReview[]
+  feedback      Feedback[]
+  errorLogs     ErrorLog[]
+
+  @@map("workspaces")
+}
+
+enum MemberRole {
+  owner
+  member
+
+  @@map("member_role")
+}
+
+model WorkspaceMember {
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id") // references auth.users (Supabase)
+  role        MemberRole
+  invitedAt   DateTime @default(now()) @map("invited_at")
+  joinedAt    DateTime? @map("joined_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+enum StreamCategory {
+  audience
+  production
+  content_distribution @map("content-distribution")
+  project
+  day_job              @map("day-job")
+  contract
+
+  @@map("stream_category")
+}
+
+model Stream {
+  id          String          @id @default(uuid())
+  workspaceId String          @map("workspace_id")
+  name        String
+  category    StreamCategory
+  description String
+  connected   Boolean         @default(false)
+  dataSource  String?         @map("data_source")
+  lastUpdated DateTime?       @map("last_updated")
+  visible     Boolean         @default(true)
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metricValues   MetricValue[]
+  weeklyReviews  WeeklyReview[]
+  automationRules AutomationRule[]
+  usageRecords   UsageRecord[]
+
+  @@map("streams")
+}
+
+model MetricValue {
+  id        String   @id @default(uuid())
+  streamId  String   @map("stream_id")
+  metricId  String   @map("metric_id")
+  value     Decimal
+  timestamp DateTime
+  source    String
+
+  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@map("metric_values")
+}
+
+model Connection {
+  id                  String    @id @default(uuid())
+  workspaceId         String    @map("workspace_id")
+  provider            String
+  method              String
+  status              String
+  credentialEncrypted String?   @map("credential_encrypted")
+  scopes              String[]
+  scopeDetails        String    @map("scope_details")
+  connectedAt         DateTime  @default(now()) @map("connected_at")
+  lastSyncAt          DateTime? @map("last_sync_at")
+  connectedBy         String    @map("connected_by") // user_id
+  connectedByName     String    @map("connected_by_name")
+
+  // OAuth specific
+  oauthProvider    String? @map("oauth_provider")
+  oauthAccountId   String? @map("oauth_account_id")
+  oauthAccountName String? @map("oauth_account_name")
+
+  // API key specific
+  apiKeyType String? @map("api_key_type")
+  apiKeyHint String? @map("api_key_hint")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("connections")
+}
+
+model IngestToken {
+  id          String    @id @default(uuid())
+  workspaceId String    @map("workspace_id")
+  token       String    @unique
+  name        String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  revokedAt   DateTime? @map("revoked_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  workspace  Workspace   @relation("WorkspaceIngestTokens", fields: [workspaceId], references: [id], onDelete: Cascade)
+  ingestLogs IngestLog[]
+
+  @@map("ingest_tokens")
+}
+
+enum IngestStatus {
+  pending
+  approved
+  rejected
+
+  @@map("ingest_status")
+}
+
+model IngestLog {
+  id          String       @id @default(uuid())
+  workspaceId String       @map("workspace_id")
+  tokenId     String       @map("token_id")
+  payload     Json
+  status      IngestStatus @default(pending)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  reviewedAt  DateTime?    @map("reviewed_at")
+  reviewedBy  String?      @map("reviewed_by") // user_id
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  token     IngestToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+
+  @@map("ingest_log")
+}
+
+model PilotInvite {
+  code       String    @id
+  email      String?
+  claimedBy  String?   @map("claimed_by") // user_id
+  claimedAt  DateTime? @map("claimed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime  @map("expires_at")
+
+  @@map("pilot_invites")
+}
+
+model WeeklyReview {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  streamId    String   @map("stream_id")
+  objective   String
+  constraint  String
+  moves       Json // array of {title, signal, reasoning, prediction}
+  chosenMove  Int?     @map("chosen_move") // index of chosen move
+  chosenAt    DateTime? @map("chosen_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stream    Stream    @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@map("weekly_reviews")
+}
+
+// Automation rules (for Rules tab)
+enum RuleTriggerType {
+  invoice_overdue    @map("invoice-overdue")
+  budget_exceeded    @map("budget-exceeded")
+  time_scheduled     @map("time-scheduled")
+  metric_threshold   @map("metric-threshold")
+
+  @@map("rule_trigger_type")
+}
+
+enum RuleActionType {
+  draft_message @map("draft-message")
+  pause_agent   @map("pause-agent")
+  prepare_review @map("prepare-review")
+  notify        @map("notify")
+
+  @@map("rule_action_type")
+}
+
+model AutomationRule {
+  id              String          @id @default(uuid())
+  streamId        String          @map("stream_id")
+  name            String
+  enabled         Boolean         @default(true)
+  triggerType     RuleTriggerType @map("trigger_type")
+  triggerCondition String         @map("trigger_condition")
+  actionType      RuleActionType  @map("action_type")
+  actionDetails   String          @map("action_details")
+  requiresApproval Boolean        @default(true) @map("requires_approval")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  lastTriggered   DateTime?       @map("last_triggered")
+  triggerCount    Int             @default(0) @map("trigger_count")
+
+  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@map("automation_rules")
+}
+
+// Usage records (for Costs tab)
+enum UsageSourceType {
+  grok_bot       @map("grok-bot")
+  openai
+  google_places  @map("google-places")
+  google_gemini  @map("google-gemini")
+  elevenlabs
+  higgsfield
+  manual
+
+  @@map("usage_source_type")
+}
+
+enum UsageUnit {
+  credits
+  tokens
+  api_calls @map("api-calls")
+  hours
+  usd
+
+  @@map("usage_unit")
+}
+
+model UsageRecord {
+  id            String          @id @default(uuid())
+  streamId      String          @map("stream_id")
+  sourceType    UsageSourceType @map("source_type")
+  sourceName    String          @map("source_name")
+  units         Decimal
+  unitType      UsageUnit       @map("unit_type")
+  costUSD       Decimal         @map("cost_usd")
+  periodStart   DateTime        @map("period_start")
+  periodEnd     DateTime        @map("period_end")
+  asOf          DateTime        @map("as_of")
+  budgetCap     Decimal?        @map("budget_cap")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@map("usage_records")
+}
+
+// Analytics events (in-DB, no paid tools)
+model AnalyticsEvent {
+  id          String   @id @default(uuid())
+  workspaceId String?  @map("workspace_id")
+  userId      String?  @map("user_id")
+  eventName   String   @map("event_name")
+  properties  Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("analytics_events")
+}
+
+// Feedback
+enum FeedbackType {
+  bug
+  feature
+  general
+
+  @@map("feedback_type")
+}
+
+model Feedback {
+  id            String       @id @default(uuid())
+  workspaceId   String       @map("workspace_id")
+  userId        String       @map("user_id")
+  type          FeedbackType
+  message       String
+  screenshotUrl String?      @map("screenshot_url")
+  page          String
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("feedback")
+}
+
+// Error logging
+model ErrorLog {
+  id          String   @id @default(uuid())
+  workspaceId String?  @map("workspace_id")
+  userId      String?  @map("user_id")
+  errorType   String   @map("error_type")
+  message     String
+  stackTrace  String?  @map("stack_trace")
+  url         String
+  userAgent   String   @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("error_logs")
+}
+
+// Onboarding tracking
+model OnboardingProgress {
+  workspaceId       String    @id @map("workspace_id")
+  signupCompletedAt DateTime  @map("signup_completed_at")
+  firstStreamAt     DateTime? @map("first_stream_at")
+  firstConnectionAt DateTime? @map("first_connection_at")
+  firstFindingAt    DateTime? @map("first_finding_at")
+  timeToFirstFinding Int?     @map("time_to_first_finding") // seconds
+
+  @@map("onboarding_progress")
+}

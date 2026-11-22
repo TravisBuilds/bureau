@@ -35,12 +35,12 @@
 
 ### 3. Ingest API + Tokens ✓
 
-**Token created:** `bureau_633957f93c0480fb03a52d3141016d22fb44d508596468e3bd376dea8b8798de`
+**Token created:** `bureau_[REDACTED]`
 
 **Ingest tested:**
 ```bash
 curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer bureau_633957f93c0480fb03a52d3141016d22fb44d508596468e3bd376dea8b8798de" \
+  -H "Authorization: Bearer bureau_[REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{
     "type": "intake",
@@ -126,7 +126,7 @@ curl -X POST http://localhost:3000/api/ingest \
 **URL:** `http://localhost:3000/settings/connect-agent`
 
 **Shows:**
-- Token display: `bureau_633957f93c0480fb03a52d3141016d22fb44d508596468e3bd376dea8b8798de`
+- Token display: `bureau_[REDACTED]`
 - Code snippet with curl command
 - Documentation link to BUREAU.md
 - Token list showing "Test Agent" active
@@ -178,7 +178,7 @@ curl -X POST http://localhost:3000/api/auth/send-magic-link \
 
 # 4. For ingest:
 curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer bureau_633957f93c0480fb03a52d3141016d22fb44d508596468e3bd376dea8b8798de" \
+  -H "Authorization: Bearer bureau_[REDACTED]" \
   -H "Content-Type: application/json" \
   -d '{"type":"intake","stream":"ember","content":"Test intake","metadata":{}}'
 ```
@@ -234,7 +234,7 @@ curl -X POST http://localhost:3000/api/ingest \
 - Studio: `22222222-2222-2222-2222-222222222222`
 
 **Token:**
-- `bureau_633957f93c0480fb03a52d3141016d22fb44d508596468e3bd376dea8b8798de`
+- `bureau_[REDACTED]`
 
 **Invite Codes:**
 - BUREAU_PILOT_001 ✓ (used)

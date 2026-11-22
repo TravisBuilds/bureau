@@ -174,20 +174,44 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 
 **Alternative:** Rules-based findings (no LLM) or user-written reviews
 
-### Anthropic Claude API
+### Anthropic Claude API (Used for Weekly Reviews)
 
-**Claude API** (Alternative for findings)
-- **Cost:** $3.00 per 1M tokens (Claude 3.5 Haiku input)
-- **Cost:** $15.00 per 1M tokens (Claude 3.5 Haiku output)
+**Claude 3.5 Haiku Pricing:**
+- **Input:** $3.00 per 1M tokens
+- **Output:** $15.00 per 1M tokens
 - **Source:** https://www.anthropic.com/pricing
-- **As of:** November 2026
+- **As of:** November 22, 2026
 
-**Usage estimates:**
-- Weekly review: ~2K input + 500 output tokens
-- Cost per review: $0.006 input + $0.0075 output = **$0.0135/review**
-- Monthly (4 reviews/user): **$0.054/user/month**
+**Token Math (per user per month):**
 
-**Recommendation:** Claude 3.5 Haiku (4x cheaper than GPT-4o-mini)
+1. **Weekly review generation** (4 reviews/month):
+   - Input tokens: 2,000 tokens/review (stream metrics, previous week context, objective)
+   - Output tokens: 500 tokens/review (3 moves with reasoning, chosen analysis)
+   - **Total per review:** 2,500 tokens (2K input + 500 output)
+
+2. **Cost per review:**
+   - Input: 2,000 tokens × ($3.00 / 1,000,000) = **$0.006**
+   - Output: 500 tokens × ($15.00 / 1,000,000) = **$0.0075**
+   - **Total:** $0.0135 per review
+
+3. **Monthly cost per user:**
+   - 4 reviews/month × $0.0135/review = **$0.054/user/month**
+
+4. **Annual cost per user:**
+   - $0.054 × 12 months = **$0.648/user/year**
+
+**At scale:**
+- 5 users: 20 reviews/month = 50K tokens = **$0.27/month**
+- 50 users: 200 reviews/month = 500K tokens = **$2.70/month**
+- 500 users: 2,000 reviews/month = 5M tokens = **$27/month**
+- 5,000 users: 20,000 reviews/month = 50M tokens = **$270/month**
+
+**Why Claude 3.5 Haiku:**
+- 4x cheaper than GPT-4o-mini ($0.60/$2.40 per 1M tokens)
+- Fast (< 1s response time)
+- Quality sufficient for move suggestions
+
+**Free tier:** No LLM calls (users write their own reviews)
 
 ### GitHub API
 

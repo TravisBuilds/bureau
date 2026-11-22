@@ -7,8 +7,9 @@ import { formatDistanceToNow } from 'date-fns';
 interface Stream {
   id: string;
   name: string;
-  type: string;
-  status: string;
+  category: string;
+  description: string;
+  connected: boolean;
   log_count: string;
   total_cost: string;
 }
@@ -38,7 +39,7 @@ export default function TopFloorPageContent({
   
   const totalCost = streams.reduce((sum, s) => sum + parseFloat(s.total_cost || '0'), 0);
   const totalLogs = streams.reduce((sum, s) => sum + parseInt(s.log_count || '0'), 0);
-  const connectedStreams = streams.filter(s => s.status === 'active').length;
+  const connectedStreams = streams.filter(s => s.connected).length;
 
   return (
     <div className="min-h-screen bg-white">
@@ -197,14 +198,14 @@ export default function TopFloorPageContent({
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h3 className="text-lg font-semibold text-slate-900">{stream.name}</h3>
-                        <p className="text-sm text-slate-500 capitalize">{stream.type}</p>
+                        <p className="text-sm text-slate-500 capitalize">{stream.category.replace(/-/g, ' ')}</p>
                       </div>
                       <span className={`px-2 py-1 text-xs font-medium rounded ${
-                        stream.status === 'active' 
+                        stream.connected 
                           ? 'bg-green-100 text-green-700' 
                           : 'bg-slate-100 text-slate-700'
                       }`}>
-                        {stream.status}
+                        {stream.connected ? 'connected' : 'not connected'}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-4">

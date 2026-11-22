@@ -9,7 +9,7 @@ import { query } from './db';
 export interface AuthUser {
   id: string;
   email: string;
-  workspaceId: string;
+  workspaceId: string | null;
 }
 
 /**
@@ -43,34 +43,33 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   }
 
   // Get user's workspace via SECURITY DEFINER function (bureau_app can execute)
+  // user_workspaces() takes no params - it reads auth.uid() from JWT claims
   try {
-    const workspaces = await query<{ id: string }>(
-      'SELECT * FROM bureau.user_workspaces($1)',
-      [user.id]
-    );
+    const { withUser } = await import('./db');
+    const workspaceId = await withUser(user.id, user.email, async (client) => {
+      const result = await client.query(
+        'SELECT id FROM bureau.user_workspaces() AS id'
+      );
+      return result.rows.length > 0 ? result.rows[0].id : null;
+    });
 
     // User authenticated but no workspace (signed in without invite)
-    if (workspaces.length === 0) {
+    if (!workspaceId) {
       return {
         id: user.id,
         email: user.email,
-        workspaceId: '', // Empty string indicates no workspace
+        workspaceId: null, // null indicates no workspace
       };
     }
 
     return {
       id: user.id,
       email: user.email,
-      workspaceId: workspaces[0].id,
+      workspaceId,
     };
   } catch (error) {
     console.error('Error fetching user workspace:', error);
-    // Return user without workspace on DB error
-    return {
-      id: user.id,
-      email: user.email,
-      workspaceId: '',
-    };
+    throw new Error(`Failed to fetch workspace: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

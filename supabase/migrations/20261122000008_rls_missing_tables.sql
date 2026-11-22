@@ -1,4 +1,4 @@
--- Migration: Enable RLS on bureau.analytics_events, bureau.onboarding_progress, bureau.pilot_invites
+-- Migration: Enable RLS on bureau.analytics_events, bureau.onboarding_progress (pilot_invites deferred)
 -- Date: 2026-11-22
 -- Purpose: Secure remaining bureau tables with proper RLS policies
 -- Pattern: Uses bureau.user_workspaces() SECURITY DEFINER function (matches existing policies)
@@ -32,27 +32,20 @@ CREATE POLICY onboarding_progress_workspace_access ON bureau.onboarding_progress
   USING (workspace_id IN (SELECT bureau.user_workspaces()));
 
 -- ============================================================================
--- PILOT INVITES
+-- PILOT INVITES  (RLS deferred -- see note)
 -- ============================================================================
 
--- Enable RLS
-ALTER TABLE bureau.pilot_invites ENABLE ROW LEVEL SECURITY;
-
 -- Policy: Users can only view invites they claimed
--- Uses auth.uid() directly (no workspace_id on this table)
-DROP POLICY IF EXISTS pilot_invites_claimed_by_access ON bureau.pilot_invites;
-CREATE POLICY pilot_invites_claimed_by_access ON bureau.pilot_invites
-  FOR SELECT
-  USING (
-    claimed_by = auth.uid()
-    AND claimed_by IS NOT NULL
-  );
-
 -- NO INSERT/UPDATE/DELETE policies on pilot_invites
--- All writes happen through SECURITY DEFINER functions:
--- - bureau.claim_pilot_invite (users claim codes)
--- - Admin functions (create invites)
--- These functions bypass RLS so they keep working
+-- RLS on bureau.pilot_invites is NOT enabled here. send-magic-link and
+-- validate-invite check invite codes with plain query() (no user context, user
+-- is not signed in yet), so a claimed_by = auth.uid() policy would make every
+-- invite look invalid. Also claimed_by is TEXT, so it must compare to
+-- auth.uid()::text. Enable RLS together with a SECURITY DEFINER
+-- bureau.check_invite(code) function and the matching app change.
+-- Interim hardening: bureau_app must not write invites directly
+-- (claim_pilot_invite is SECURITY DEFINER and keeps working).
+REVOKE INSERT, UPDATE, DELETE ON bureau.pilot_invites FROM bureau_app;
 
 -- ============================================================================
 -- VERIFY SECURITY DEFINER FUNCTIONS
@@ -73,7 +66,7 @@ CREATE POLICY pilot_invites_claimed_by_access ON bureau.pilot_invites
 -- Ensure bureau_app can use these tables (grants for SECURITY DEFINER functions)
 GRANT SELECT, INSERT, UPDATE, DELETE ON bureau.analytics_events TO bureau_app;
 GRANT SELECT, INSERT, UPDATE ON bureau.onboarding_progress TO bureau_app;
-GRANT SELECT, UPDATE ON bureau.pilot_invites TO bureau_app;
+GRANT SELECT ON bureau.pilot_invites TO bureau_app;
 
 -- Note: We do NOT grant bureau_app on auth schema
 -- Bureau never writes to auth.users - that's owned by Supabase Auth and PulseCheck

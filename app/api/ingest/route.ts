@@ -128,8 +128,8 @@ export async function POST(request: NextRequest) {
             
             // Auto-create stream by name for new pilots
             const createRows = await client.query(
-              `INSERT INTO bureau.streams (workspace_id, name, type, status)
-               VALUES ($1, $2, 'agent', 'active')
+              `INSERT INTO bureau.streams (workspace_id, name, category, description)
+               VALUES ($1, $2, 'production', 'Auto-created from agent ingest')
                RETURNING id`,
               [tokenInfo.workspace_id, streamName]
             );

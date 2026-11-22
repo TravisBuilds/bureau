@@ -21,7 +21,7 @@ export default async function TopFloorPage() {
     // Get streams with per-stream costs and log counts
     const streamsResult = await client.query(
       `SELECT 
-        s.id, s.name, s.type, s.status,
+        s.id, s.name, s.category, s.description, s.connected,
         COUNT(DISTINCT il.id) FILTER (
           WHERE il.payload->>'stream_id' IS NOT NULL 
           AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -41,7 +41,7 @@ export default async function TopFloorPage() {
        FROM bureau.streams s
        LEFT JOIN bureau.ingest_log il ON il.workspace_id = s.workspace_id
        WHERE s.workspace_id = $1
-       GROUP BY s.id, s.name, s.type, s.status
+       GROUP BY s.id, s.name, s.category, s.description, s.connected
        ORDER BY s.created_at DESC`,
       [user.workspaceId]
     );

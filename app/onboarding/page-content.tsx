@@ -33,7 +33,6 @@ export default function OnboardingContent({ userEmail }: OnboardingContentProps)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'First Agent Token',
-          stream_id: firstStream || 'default-stream',
         }),
       });
 

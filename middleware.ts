@@ -15,6 +15,7 @@ export async function middleware(request: NextRequest) {
   const isPublic = 
     pathname === '/' ||
     pathname.startsWith('/auth/') ||
+    pathname.startsWith('/api/auth/') ||  // send-magic-link, validate-invite
     pathname.startsWith('/api/ingest');
 
   if (isPublic) {

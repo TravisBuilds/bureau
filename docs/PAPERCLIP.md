@@ -3,9 +3,15 @@
 **Date:** November 22, 2026  
 **Purpose:** Evaluate whether Bureau should run ON Paperclip or reimplement its patterns
 
-## Paperclip Core Concepts
+## Philosophical Difference: Startups vs Solopreneurs
 
-Paperclip (MIT license, https://github.com/paperclipai/paperclip) is an open-source platform for managing AI agent organizations. Key concepts adopted:
+**Paperclip is for startups.** It frames work as companies trying to scale: CEO agents, org charts, corporate goals like "$1M MRR", hiring teams.
+
+**Bureau is for solopreneurs with day jobs.** People turning passions into income streams. The founder is the only person. Agents are helpers. The scarce resources are the founder's hours and money. Goals are personal: "cover my costs", "make $500/month side income", "learn if anyone wants this".
+
+This philosophical difference shapes what we borrow from Paperclip and what we skip.
+
+## Paperclip Core Concepts (What We Borrow)
 
 ### 1. Company
 - Self-contained AI organization with one goal, team of agents, task board, and budget
@@ -116,34 +122,31 @@ Paperclip (MIT license, https://github.com/paperclipai/paperclip) is an open-sou
 
 ## Recommendation
 
-**Reimplement Paperclip patterns. Do NOT run on Paperclip.**
+**Reimplement Paperclip's technical plumbing. Do NOT run on Paperclip.**
 
-### Reasoning (3-4 sentences as requested)
+### Reasoning
 
-Bureau's core value is the **decision brain** — the deterministic engine that tells founders whether a project is viable, what to do next, and whether to keep/push/pause/kill. Making Bureau a layer ON Paperclip would hide this value behind Paperclip's generic task UI and add deployment complexity. By reimplementing Paperclip's patterns (Company, Agent hierarchy, Tasks, Budgets, Approvals) in Bureau's own codebase, we keep the decision brain prominent while adopting Paperclip's proven organizational model. This gives founders one app, not two, and keeps Bureau focused on its differentiator: **business-health intelligence for solo founders**.
+Bureau and Paperclip serve different users with different philosophies. Paperclip frames work as **corporate scaling** (companies, CEO agents, org charts, $1M MRR goals). Bureau frames work as **personal income streams** (solopreneurs with day jobs, helpers not hierarchies, "cover my costs" not "raise Series A"). Running Bureau ON Paperclip would force solopreneurs into corporate terminology and workflows that don't fit their reality. By borrowing Paperclip's **technical patterns** (adapters, heartbeats, task threads, budget enforcement) but **skipping its corporate framing**, Bureau stays focused on its true audience: people turning passions into income streams while working a day job.
 
-### What Bureau Adopts from Paperclip
+### What Bureau Borrows from Paperclip (Technical Plumbing)
 
-**Data Model:**
-1. ✅ Company = Project (one goal, monthly budget ceiling, isolated)
-2. ✅ Agent hierarchy with roles (founder as board, CEO agent, specialist agents)
-3. ✅ Task lifecycle (backlog → todo → in_progress → in_review → done)
-4. ✅ Budget tracking (company ceiling, per-agent limits, 80% warning, 100% pause)
-5. ✅ Approval queue ("Needs Founder" for strategy, hires, budget overrides)
-6. ✅ Activity log (all actions timestamped)
-7. ✅ Adapter interface (AgentProvider = Paperclip's adapter concept)
+**Technical Infrastructure:**
+1. ✅ Adapter interface ("if it can receive a heartbeat, it's hired")
+2. ✅ Heartbeat concept (agents wake on schedule/assignment/comment)
+3. ✅ Task threads (comment discussions on work)
+4. ✅ Approval gates (founder sign-off on important decisions)
+5. ✅ Budget enforcement (80% warning, 100% auto-pause)
+6. ✅ Activity log (audit trail of all actions)
+7. ✅ Task lifecycle (backlog → todo → in_progress → review → done)
 
-**UI Patterns:**
-1. ✅ Org chart view (agents in hierarchy)
-2. ✅ Task board (kanban-style with statuses)
-3. ✅ Budget dashboard (spend vs ceiling, per-agent breakdown)
-4. ✅ Approval inbox (pending decisions)
-5. ✅ Activity feed (audit log)
-
-**NOT Adopted:**
-- ❌ Heartbeat scheduling (Bureau uses simpler dispatch model)
-- ❌ Multi-company switching in same session (Bureau focuses on portfolio view)
-- ❌ Complex agent hiring flow (Bureau uses simpler "Connect Agent" model)
+**What Bureau Skips (Corporate Framing):**
+- ❌ "Company" terminology → Use "Income Stream" or "Passion Project"
+- ❌ Org chart / hierarchy → Simple "Your Helpers" panel
+- ❌ CEO/CTO roles → Agents are assistants with jobs, not corporate titles
+- ❌ "Hire agent" flow → "Connect a helper"
+- ❌ Corporate goals ($1M MRR) → Personal goals ("cover costs", "$500/mo side income")
+- ❌ Strategy approval → Goal check-in ("Is this still what you want?")
+- ❌ Agent reports to manager → All helpers report to founder (no middle management)
 
 ### What Bureau ADDS Beyond Paperclip
 

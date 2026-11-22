@@ -15,14 +15,16 @@ interface NextAction {
 }
 
 export default function CompanyOverviewPage() {
-  const company = {
+  const stream = {
     name: 'Plum List',
-    goal: 'Help travelers find great restaurants',
+    myGoal: 'Learn if travelers want this',
     signal: 'push' as const,
     signalReason: 'Critical blocker: return tracking not measurable',
-    signalDetail: 'Unblock measurement to evaluate next steps',
+    signalDetail: 'You need to know if people come back. Right now you can't measure that.',
+    headline: 'Too early to tell if this is becoming real income',
     monthlyBudget: 100,
     spent: 9.97,
+    earnings: 0,
     needsYou: 1,
   };
 
@@ -59,16 +61,22 @@ export default function CompanyOverviewPage() {
 
   return (
     <div className="p-8">
+      {/* Headline */}
+      <div className="bg-white rounded-xl border-l-4 border-primary p-6 mb-6">
+        <h2 className="text-xl font-bold text-dark mb-2">{stream.headline}</h2>
+        <p className="text-sm text-silver">Your goal: {stream.myGoal}</p>
+      </div>
+
       {/* Signal Banner */}
       <SignalBanner
-        signal={company.signal}
-        reason={company.signalReason}
-        detail={company.signalDetail}
+        signal={stream.signal}
+        reason={stream.signalReason}
+        detail={stream.signalDetail}
       />
 
       {/* Key Metrics */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <h2 className="text-lg font-bold text-dark mb-4">Key Metrics</h2>
+        <h2 className="text-lg font-bold text-dark mb-4">What's Happening</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {metrics.map((metric, i) => (
             <MetricCard key={i} metric={metric} />
@@ -79,8 +87,8 @@ export default function CompanyOverviewPage() {
       {/* What to Do Next */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-dark">What to Do Next</h2>
-          <span className="text-sm text-silver">Ranked by priority & impact</span>
+          <h2 className="text-lg font-bold text-dark">What You Should Do</h2>
+          <span className="text-sm text-silver">Ranked by what matters most</span>
         </div>
         <div className="space-y-3">
           {nextActions.map((action, i) => (
@@ -92,24 +100,28 @@ export default function CompanyOverviewPage() {
       {/* Quick Stats Row */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="text-sm text-silver mb-1">Budget Used</div>
-          <div className="text-2xl font-bold text-dark">{company.spent}%</div>
-          <div className="text-xs text-silver mt-1">${company.spent} of ${company.monthlyBudget}/mo</div>
+          <div className="text-sm text-silver mb-1">Spending</div>
+          <div className="text-2xl font-bold text-dark">${stream.spent}/mo</div>
+          <div className="text-xs text-silver mt-1">of ${stream.monthlyBudget} you're okay with</div>
           <div className="mt-3 h-2 bg-light-gray rounded-full overflow-hidden">
-            <div className="h-full bg-success" style={{ width: `${(company.spent / company.monthlyBudget) * 100}%` }}></div>
+            <div className="h-full bg-success" style={{ width: `${(stream.spent / stream.monthlyBudget) * 100}%` }}></div>
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="text-sm text-silver mb-1">Agents Connected</div>
-          <div className="text-2xl font-bold text-dark">2</div>
-          <div className="text-xs text-silver mt-1">Mock Agent Alpha, Beta</div>
+          <div className="text-sm text-silver mb-1">Earning</div>
+          <div className={`text-2xl font-bold ${stream.earnings > 0 ? 'text-success' : 'text-silver'}`}>
+            ${stream.earnings}/mo
+          </div>
+          <div className="text-xs text-silver mt-1">
+            {stream.earnings > 0 ? 'Money coming in!' : 'Not monetized yet'}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="text-sm text-silver mb-1">Needs Founder</div>
-          <div className="text-2xl font-bold text-warning">{company.needsYou}</div>
-          <div className="text-xs text-silver mt-1">Approval required</div>
+          <div className="text-sm text-silver mb-1">Needs You</div>
+          <div className="text-2xl font-bold text-warning">{stream.needsYou}</div>
+          <div className="text-xs text-silver mt-1">Decision waiting</div>
         </div>
       </div>
     </div>

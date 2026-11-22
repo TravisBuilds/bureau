@@ -4,18 +4,18 @@ import { useState } from 'react';
 import { use } from 'react';
 import AppLayout from '@/components/AppLayout';
 import CompanyOverviewPage from '@/components/CompanyOverviewPage';
-import OrgChartPage from '@/components/OrgChartPage';
+import YourHelpersPage from '@/components/YourHelpersPage';
 import TaskBoard from '@/components/TaskBoard';
-import BudgetPage from '@/components/BudgetPage';
+import MoneyPage from '@/components/MoneyPage';
 
-export default function CompanyPage({ params }: { params: Promise<{ id: string }> }) {
+export default function StreamPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'org' | 'budget'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'helpers' | 'money'>('overview');
   
-  const companyName = id === 'plum-list' ? 'Plum List' : 'Company';
+  const streamName = id === 'plum-list' ? 'Plum List' : 'Income Stream';
 
   return (
-    <AppLayout currentCompany={companyName}>
+    <AppLayout currentStream={streamName}>
       {/* Tabs */}
       <div className="bg-white border-b border-gray-200">
         <div className="flex gap-1 px-8">
@@ -25,20 +25,20 @@ export default function CompanyPage({ params }: { params: Promise<{ id: string }
           <Tab active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')}>
             Tasks
           </Tab>
-          <Tab active={activeTab === 'org'} onClick={() => setActiveTab('org')}>
-            Agents & Org
+          <Tab active={activeTab === 'helpers'} onClick={() => setActiveTab('helpers')}>
+            Your Helpers
           </Tab>
-          <Tab active={activeTab === 'budget'} onClick={() => setActiveTab('budget')}>
-            Budget
+          <Tab active={activeTab === 'money'} onClick={() => setActiveTab('money')}>
+            Money In/Out
           </Tab>
         </div>
       </div>
 
       {/* Content */}
       {activeTab === 'overview' && <CompanyOverviewPage />}
-      {activeTab === 'tasks' && <TaskBoard projectName={companyName} />}
-      {activeTab === 'org' && <OrgChartPage />}
-      {activeTab === 'budget' && <BudgetPage />}
+      {activeTab === 'tasks' && <TaskBoard projectName={streamName} />}
+      {activeTab === 'helpers' && <YourHelpersPage />}
+      {activeTab === 'money' && <MoneyPage />}
     </AppLayout>
   );
 }

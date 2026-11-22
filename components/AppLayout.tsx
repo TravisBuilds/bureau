@@ -5,10 +5,10 @@ import Image from 'next/image';
 
 interface Props {
   children: React.ReactNode;
-  currentCompany?: string | null;
+  currentStream?: string | null;
 }
 
-export default function AppLayout({ children, currentCompany }: Props) {
+export default function AppLayout({ children, currentStream }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
@@ -35,16 +35,15 @@ export default function AppLayout({ children, currentCompany }: Props) {
         {/* Navigation */}
         <nav className="flex-1 p-4">
           <div className="space-y-1">
-            <NavLink href="/" icon="📊" label="Portfolio" open={sidebarOpen} />
-            {currentCompany && (
+            <NavLink href="/" icon="💰" label="Income Streams" open={sidebarOpen} />
+            {currentStream && (
               <div className="mt-6 pt-6 border-t border-gray-700">
-                <div className="text-xs text-silver mb-2 px-2">{sidebarOpen ? currentCompany : '...'}</div>
+                <div className="text-xs text-silver mb-2 px-2">{sidebarOpen ? currentStream : '...'}</div>
                 <NavLink href="/overview" icon="🎯" label="Overview" open={sidebarOpen} />
                 <NavLink href="/tasks" icon="✓" label="Tasks" open={sidebarOpen} />
-                <NavLink href="/org" icon="👥" label="Agents & Org" open={sidebarOpen} />
-                <NavLink href="/budget" icon="💰" label="Budget" open={sidebarOpen} />
+                <NavLink href="/helpers" icon="🤝" label="Your Helpers" open={sidebarOpen} />
+                <NavLink href="/money" icon="💵" label="Money In/Out" open={sidebarOpen} />
                 <NavLink href="/activity" icon="📝" label="Activity" open={sidebarOpen} />
-                <NavLink href="/connections" icon="🔌" label="Connections" open={sidebarOpen} />
               </div>
             )}
           </div>
@@ -70,16 +69,10 @@ export default function AppLayout({ children, currentCompany }: Props) {
 }
 
 function NavLink({ href, icon, label, open }: { href: string; icon: string; label: string; open: boolean }) {
-  const isActive = typeof window !== 'undefined' && window.location.pathname === href;
-  
   return (
     <a
       href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-        isActive
-          ? 'bg-primary text-white'
-          : 'text-silver hover:bg-gray-800 hover:text-white'
-      }`}
+      className="flex items-center gap-3 px-3 py-2 rounded-lg text-silver hover:bg-gray-800 hover:text-white transition-colors"
     >
       <span className="text-lg">{icon}</span>
       {open && <span className="text-sm font-medium">{label}</span>}

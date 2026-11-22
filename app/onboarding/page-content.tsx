@@ -70,7 +70,7 @@ curl -X POST ${siteUrl}/api/ingest \\
     }
   }'
 
-# See full docs: ${siteUrl}/BUREAU.md`;
+# See full docs: https://github.com/TravisBuilds/bureau/blob/main/docs/BUREAU.md`;
 
   const copyToClipboard = (text: string, type: 'token' | 'snippet') => {
     navigator.clipboard.writeText(text);

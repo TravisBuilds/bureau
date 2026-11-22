@@ -20,14 +20,14 @@ describe('Integration Tests', () => {
     
     // Create two users with workspaces
     const invite1 = await client.query(
-      `INSERT INTO bureau.pilot_invites (code, description, expires_at)
-       VALUES ('TEST1', 'Test invite 1', NOW() + INTERVAL '1 day')
+      `INSERT INTO bureau.pilot_invites (code, expires_at)
+       VALUES ('TEST1', NOW() + INTERVAL '1 day')
        RETURNING code`
     );
     
     const invite2 = await client.query(
-      `INSERT INTO bureau.pilot_invites (code, description, expires_at)
-       VALUES ('TEST2', 'Test invite 2', NOW() + INTERVAL '1 day')
+      `INSERT INTO bureau.pilot_invites (code, expires_at)
+       VALUES ('TEST2', NOW() + INTERVAL '1 day')
        RETURNING code`
     );
     

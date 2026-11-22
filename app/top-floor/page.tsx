@@ -18,15 +18,21 @@ export default async function TopFloorPage() {
 
   // Fetch real workspace data
   const data = await withUser(user.id, user.email, async (client) => {
-    // Get streams with per-stream costs and log counts
+    // Get streams with per-stream costs, log counts, and recent activity
     const streamsResult = await client.query(
       `SELECT 
-        s.id, s.name, s.category, s.description, s.connected,
+        s.id, s.name, s.category, s.description,
         COUNT(DISTINCT il.id) FILTER (
           WHERE il.payload->>'stream_id' IS NOT NULL 
           AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
           AND (il.payload->>'stream_id')::uuid = s.id
         ) as log_count,
+        COUNT(DISTINCT il.id) FILTER (
+          WHERE il.payload->>'stream_id' IS NOT NULL 
+          AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          AND (il.payload->>'stream_id')::uuid = s.id
+          AND il.created_at > NOW() - INTERVAL '7 days'
+        ) as recent_logs,
         COALESCE(SUM(
           CASE 
             WHEN il.payload->>'stream_id' IS NOT NULL
@@ -41,7 +47,7 @@ export default async function TopFloorPage() {
        FROM bureau.streams s
        LEFT JOIN bureau.ingest_log il ON il.workspace_id = s.workspace_id
        WHERE s.workspace_id = $1
-       GROUP BY s.id, s.name, s.category, s.description, s.connected
+       GROUP BY s.id, s.name, s.category, s.description
        ORDER BY s.created_at DESC`,
       [user.workspaceId]
     );

@@ -1,82 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { withUser } from '@/lib/db';
+import { requireAuth } from '@/lib/auth-helpers';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
+    }
+    
     const { id: streamId } = await params;
     
-    // Fetch output costs for this stream
-    const costs = await query<{
-      output_id: string;
-      output_name: string;
-      output_type: string;
-      generation_cost_usd: number;
-      failed_renders_cost_usd: number;
-      elevenlabs_characters: number | null;
-      elevenlabs_cost_usd: number | null;
-      higgsfield_credits: number | null;
-      higgsfield_cost_usd: number | null;
-      views: number | null;
-      watch_time_seconds: number | null;
-      subscribers_gained: number | null;
-      revenue_usd: number | null;
-      trust_level: string;
-      verified_sources: string[];
-      created_at: Date;
-      published_at: Date | null;
-      last_synced_at: Date | null;
-      lifecycle: 'draft' | 'finished' | 'published' | 'abandoned' | null;
-      cost_coverage_note: string | null;
-    }>(
-      `SELECT 
-        output_id, output_name, output_type,
-        generation_cost_usd, failed_renders_cost_usd,
-        elevenlabs_characters, elevenlabs_cost_usd,
-        higgsfield_credits, higgsfield_cost_usd,
-        views, watch_time_seconds, subscribers_gained, revenue_usd,
-        trust_level, verified_sources,
-        created_at, published_at, last_synced_at,
-        lifecycle, cost_coverage_note
-       FROM output_costs
-       WHERE stream_id = $1
-       ORDER BY created_at DESC`,
-      [streamId]
-    );
+    // Verify stream belongs to user's workspace and fetch costs from ingest_log
+    const data = await withUser(user.id, user.email, async (client) => {
+      // Check stream ownership
+      const streamCheck = await client.query(
+        `SELECT id FROM bureau.streams 
+         WHERE id = $1 AND workspace_id = $2`,
+        [streamId, user.workspaceId]
+      );
+      
+      if (streamCheck.rows.length === 0) {
+        return null; // 404
+      }
+      
+      // Fetch ingest logs for this stream
+      const result = await client.query(
+        `SELECT 
+          il.id,
+          il.payload->>'content' as content,
+          il.payload->'metadata'->>'cost_usd' as cost_usd,
+          il.payload->'metadata' as metadata,
+          il.created_at,
+          il.status
+         FROM bureau.ingest_log il
+         WHERE il.workspace_id = $1
+         AND il.payload->>'stream_id' IS NOT NULL
+         AND il.payload->>'stream_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+         AND (il.payload->>'stream_id')::uuid = $2
+         ORDER BY il.created_at DESC
+         LIMIT 100`,
+        [user.workspaceId, streamId]
+      );
+      
+      return result.rows;
+    });
     
-    // Calculate totals
-    const totalCost = costs.reduce((sum, c) => sum + Number(c.generation_cost_usd), 0);
-    const totalViews = costs.reduce((sum, c) => sum + (c.views || 0), 0);
-    const avgCostPerView = totalViews > 0 ? totalCost / totalViews : 0;
+    if (data === null) {
+      return NextResponse.json({ error: 'Stream not found' }, { status: 404 });
+    }
     
-    // Calculate cost per view for each output
-    const costsWithMetrics = costs.map(c => ({
-      ...c,
-      generation_cost_usd: Number(c.generation_cost_usd),
-      failed_renders_cost_usd: Number(c.failed_renders_cost_usd),
-      elevenlabs_cost_usd: c.elevenlabs_cost_usd ? Number(c.elevenlabs_cost_usd) : null,
-      higgsfield_cost_usd: c.higgsfield_cost_usd ? Number(c.higgsfield_cost_usd) : null,
-      higgsfield_credits: c.higgsfield_credits ? Number(c.higgsfield_credits) : null,
-      revenue_usd: c.revenue_usd ? Number(c.revenue_usd) : null,
-      costPerView: c.views && c.views > 0 ? Number(c.generation_cost_usd) / c.views : null,
-      costPer1kViews: c.views && c.views > 0 ? (Number(c.generation_cost_usd) / c.views) * 1000 : null,
+    // Parse and calculate totals
+    const logs = data.map((row: any) => ({
+      id: row.id,
+      content: row.content,
+      cost_usd: row.cost_usd && row.cost_usd.match(/^[0-9]+\.?[0-9]*$/) 
+        ? parseFloat(row.cost_usd) 
+        : 0,
+      metadata: row.metadata || {},
+      created_at: row.created_at,
+      status: row.status,
     }));
     
+    const totalCost = logs.reduce((sum: number, log: any) => sum + log.cost_usd, 0);
+    
     return NextResponse.json({
-      outputs: costsWithMetrics,
+      stream_id: streamId,
+      logs,
       summary: {
-        total_outputs: costs.length,
+        total_logs: logs.length,
         total_cost: totalCost,
-        total_views: totalViews,
-        avg_cost_per_view: avgCostPerView,
-        avg_cost_per_1k_views: totalViews > 0 ? (totalCost / totalViews) * 1000 : 0,
       }
     });
     
   } catch (error) {
-    console.error('Error fetching costs:', error);
+    if (error instanceof Response) {
+      return error;
+    }
+    console.error('Error fetching stream costs:', error);
     return NextResponse.json({ 
       error: 'Failed to fetch costs',
       details: String(error)

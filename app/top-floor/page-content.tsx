@@ -9,8 +9,8 @@ interface Stream {
   name: string;
   category: string;
   description: string;
-  connected: boolean;
   log_count: string;
+  recent_logs: string;
   total_cost: string;
 }
 
@@ -39,7 +39,7 @@ export default function TopFloorPageContent({
   
   const totalCost = streams.reduce((sum, s) => sum + parseFloat(s.total_cost || '0'), 0);
   const totalLogs = streams.reduce((sum, s) => sum + parseInt(s.log_count || '0'), 0);
-  const connectedStreams = streams.filter(s => s.connected).length;
+  const activeStreams = streams.filter(s => parseInt(s.recent_logs || '0') > 0).length;
 
   return (
     <div className="min-h-screen bg-white">
@@ -121,9 +121,9 @@ export default function TopFloorPageContent({
                 <div className="p-4 bg-white border border-slate-200 rounded-lg">
                   <div className="text-sm text-slate-500 mb-1">Streams</div>
                   <div className="text-2xl font-semibold text-slate-900">
-                    {connectedStreams}/{streams.length}
+                    {activeStreams}/{streams.length}
                   </div>
-                  <div className="text-xs text-slate-400 mt-1">active</div>
+                  <div className="text-xs text-slate-400 mt-1">active (7 days)</div>
                 </div>
 
                 <div className="p-4 bg-white border border-slate-200 rounded-lg">
@@ -201,11 +201,11 @@ export default function TopFloorPageContent({
                         <p className="text-sm text-slate-500 capitalize">{stream.category.replace(/-/g, ' ')}</p>
                       </div>
                       <span className={`px-2 py-1 text-xs font-medium rounded ${
-                        stream.connected 
+                        parseInt(stream.recent_logs || '0') > 0
                           ? 'bg-green-100 text-green-700' 
                           : 'bg-slate-100 text-slate-700'
                       }`}>
-                        {stream.connected ? 'connected' : 'not connected'}
+                        {parseInt(stream.recent_logs || '0') > 0 ? 'active' : 'inactive'}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-4">

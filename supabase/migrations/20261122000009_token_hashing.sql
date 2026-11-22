@@ -29,8 +29,11 @@ CREATE INDEX idx_ingest_tokens_hash ON bureau.ingest_tokens(token_hash);
 -- UPDATE resolve_ingest_token FUNCTION
 -- ============================================================================
 
--- New version that hash-compares tokens
-CREATE OR REPLACE FUNCTION bureau.resolve_ingest_token(
+-- Parameter name changes (token_text -> p_token), and CREATE OR REPLACE cannot rename
+-- input parameters (42P13), so drop the old signature first.
+DROP FUNCTION IF EXISTS bureau.resolve_ingest_token(TEXT);
+
+CREATE FUNCTION bureau.resolve_ingest_token(
   p_token TEXT
 ) RETURNS TABLE (
   workspace_id UUID,
@@ -42,11 +45,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = bureau, extensions
 AS $$
+#variable_conflict use_column
 DECLARE
   v_token_hash TEXT;
 BEGIN
-  -- Compute SHA-256 hash of provided token
-  v_token_hash := encode(digest(p_token, 'sha256'), 'hex');
+  -- Compute SHA-256 hash of provided token (schema-qualified pgcrypto)
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
   
   -- Look up by hash (not plaintext)
   RETURN QUERY
@@ -71,4 +75,5 @@ $$;
 COMMENT ON FUNCTION bureau.resolve_ingest_token IS 
   'Validates ingest token by hash comparison. Returns workspace, user, email. SECURITY DEFINER to bypass RLS.';
 
-GRANT EXECUTE ON FUNCTION bureau.resolve_ingest_token TO bureau_app;
+REVOKE ALL ON FUNCTION bureau.resolve_ingest_token(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION bureau.resolve_ingest_token(TEXT) TO bureau_app;

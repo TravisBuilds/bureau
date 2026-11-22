@@ -64,8 +64,18 @@ export async function POST(request: NextRequest) {
     const tokenInfo = tokenRows[0];
     const userEmail = tokenInfo.user_email;
     
-    // 2. Parse payload
-    const payload: IngestPayload = await request.json();
+    // 2. Parse payload (catch malformed JSON)
+    let payload: IngestPayload;
+    try {
+      payload = await request.json();
+    } catch (error) {
+      return NextResponse.json({ 
+        error: 'Malformed JSON payload' 
+      }, { status: 400 });
+    }
+    
+    // 3. Validate required fields and type
+    const validTypes = ['intake', 'cost', 'metric', 'finding'];
     
     if (!payload.type || !payload.content) {
       return NextResponse.json({ 
@@ -73,7 +83,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // 3. Run queries with proper user context
+    if (!validTypes.includes(payload.type)) {
+      return NextResponse.json({ 
+        error: `Invalid type. Must be one of: ${validTypes.join(', ')}` 
+      }, { status: 400 });
+    }
+    
+    // Validate stream name length
+    if (payload.stream && payload.stream.length > 100) {
+      return NextResponse.json({ 
+        error: 'Stream name too long (max 100 characters)' 
+      }, { status: 400 });
+    }
+    
+    // 4. Run queries with proper user context
     const { withUser } = await import('@/lib/db');
     
     const { streamId, ingestLogId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
@@ -81,15 +104,14 @@ export async function POST(request: NextRequest) {
       let streamId: string | null = null;
       
       if (payload.stream) {
-        // Cap stream name length
-        const streamName = payload.stream.substring(0, 100);
+        const streamName = payload.stream;
         
         // Check if it's a valid UUID format
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const isUuid = uuidRegex.test(streamName);
         
         if (isUuid) {
-          // Try as UUID first (with workspace filter)
+          // Try as UUID (with workspace filter)
           const uuidStreamRows = await client.query(
             `SELECT id FROM bureau.streams 
              WHERE workspace_id = $1 
@@ -99,10 +121,11 @@ export async function POST(request: NextRequest) {
           
           if (uuidStreamRows.rows.length > 0) {
             streamId = uuidStreamRows.rows[0].id;
+          } else {
+            // UUID format but not an existing stream -> 404
+            throw new Error(`STREAM_NOT_FOUND:${streamName}`);
           }
-        }
-        
-        if (!streamId) {
+        } else {
           // Try by name (exact match, case-insensitive, workspace-scoped)
           const streamRows = await client.query(
             `SELECT id FROM bureau.streams 
@@ -123,7 +146,7 @@ export async function POST(request: NextRequest) {
             
             const streamCount = parseInt(countRows.rows[0].count);
             if (streamCount >= 50) {
-              throw new Error('Stream limit reached (50). Delete unused streams or contact support.');
+              throw new Error('STREAM_LIMIT_REACHED');
             }
             
             // Auto-create stream by name for new pilots
@@ -174,10 +197,25 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    
+    // Handle specific error cases
+    if (errorMsg.startsWith('STREAM_NOT_FOUND:')) {
+      const streamId = errorMsg.split(':')[1];
+      return NextResponse.json({ 
+        error: `Stream not found: ${streamId}` 
+      }, { status: 404 });
+    }
+    
+    if (errorMsg === 'STREAM_LIMIT_REACHED') {
+      return NextResponse.json({ 
+        error: 'Stream limit reached (50). Delete unused streams or contact support.' 
+      }, { status: 429 });
+    }
+    
     console.error('Ingest error:', error);
     return NextResponse.json({ 
-      error: 'Failed to process ingest',
-      details: String(error)
+      error: 'Failed to process ingest'
     }, { status: 500 });
   }
 }
@@ -199,6 +237,6 @@ export async function GET() {
       }
     },
     types: ['intake', 'cost', 'metric', 'finding'],
-    docs: 'https://github.com/bureau/bureau/blob/main/docs/BUREAU.md'
+    docs: 'https://github.com/TravisBuilds/bureau/blob/main/docs/BUREAU.md'
   });
 }

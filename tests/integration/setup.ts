@@ -40,6 +40,16 @@ export async function setupDatabase() {
       await client.query(sql);
     }
     
+    // Create bureau_app role BEFORE migrations that reference it
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'bureau_app') THEN
+          CREATE ROLE bureau_app NOLOGIN;
+        END IF;
+      END $$;
+    `);
+    
     // Run migrations in order
     const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
     const migrations = readdirSync(migrationsDir)
@@ -51,16 +61,6 @@ export async function setupDatabase() {
       const sql = readFileSync(join(migrationsDir, migration), 'utf8');
       await client.query(sql);
     }
-    
-    // Create bureau_app role
-    await client.query(`
-      DO $$ 
-      BEGIN
-        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'bureau_app') THEN
-          CREATE ROLE bureau_app NOLOGIN;
-        END IF;
-      END $$;
-    `);
     
     // Run setup-role.sql grants
     const setupRolePath = join(process.cwd(), 'supabase', 'setup-role.sql');

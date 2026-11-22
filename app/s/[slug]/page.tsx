@@ -7,6 +7,8 @@ import { generateSampleBakeryAuditTrail, SAMPLE_BAKERY_PITCH } from '@/lib/sampl
 import { DEFAULT_SHARE_SETTINGS } from '@/lib/audit-types';
 import { getTotalIncome, getTotalCosts, getDecisionHistory } from '@/lib/audit-types';
 
+export const dynamicParams = true;
+
 export default function PublicStreamPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   

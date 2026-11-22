@@ -48,7 +48,7 @@ export function formatShortDate(timestamp: string, timezone: string = DEFAULT_TI
  * Format as full datetime in America/Los_Angeles
  */
 export function formatFullDateTime(timestamp: string, timezone: string = DEFAULT_TIMEZONE): string {
-  return formatTimestamp(timestamp, {}, timezone);
+  return formatTimestamp(timestamp, { timeZoneName: 'short' }, timezone);
 }
 
 /**

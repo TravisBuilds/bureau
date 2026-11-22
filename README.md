@@ -370,19 +370,67 @@ export function getProvider(type: ProviderType): AgentProvider {
 
 ### Environment Variables
 
-```bash
-# .env.local (create this file, it's gitignored)
+**Quick Start:**
+1. Copy `.env.example` to `.env.local`
+2. Fill in your Supabase credentials
+3. Generate an encryption key: `openssl rand -base64 32`
 
-# REQUIRED for production
+**Required for production:**
+```bash
+# Database (from Supabase Project Settings > Database)
+DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres
+DATABASE_URL_ADMIN=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres
+
+# Authentication (from Supabase Project Settings > API)
+NEXT_PUBLIC_SUPABASE_URL=https://[PROJECT].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# Encryption for credential storage
 BUREAU_ENCRYPTION_KEY=your-32-char-encryption-key-here
 
-# Optional provider credentials
-OPENAI_API_KEY=sk-...
-CURSOR_CLIENT_ID=...
-CURSOR_CLIENT_SECRET=...
+# Your production URL (for email redirect links)
+NEXT_PUBLIC_SITE_URL=https://bureau.yourdomain.com
 ```
 
+**Optional:**
+```bash
+# LLM-powered weekly review (disabled by default)
+BUREAU_ENABLE_LLM_REVIEW=true
+OPENAI_API_KEY=sk-proj-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Local Development:**
+- Omit `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to use local auth
+- Magic links will be logged to console instead of sent via email
+- Sessions stored in local database
+
 **Security warning:** Never commit `.env.local` to git. The encryption key is used to encrypt all stored credentials.
+
+### Authentication Setup
+
+**For Production (Vercel + Supabase):**
+
+1. **Configure Supabase Auth:**
+   - Go to Authentication > URL Configuration in Supabase dashboard
+   - Set **Site URL** to your production URL: `https://bureau.yourdomain.com`
+   - Add **Redirect URLs**: `https://bureau.yourdomain.com/auth/callback`
+   - Enable Email provider in Authentication > Providers
+   - Customize email templates in Authentication > Email Templates (optional)
+
+2. **Set Environment Variables in Vercel:**
+   - Add all required env vars from `.env.example`
+   - Set `NEXT_PUBLIC_SITE_URL` to your production domain
+   - Supabase will send magic link emails automatically (no email provider account needed)
+
+3. **Invite Codes:**
+   - Pilot access requires invite codes: `BUREAU_PILOT_001` through `BUREAU_PILOT_005`
+   - Manage invites in `pilot_invites` table or via admin page
+
+**For Local Development:**
+- Just set `DATABASE_URL` and `BUREAU_ENCRYPTION_KEY`
+- Omit Supabase env vars to use local auth
+- Magic links logged to console for testing
 
 ## Development
 

@@ -8,6 +8,8 @@
 
 import crypto from 'crypto';
 import { query, execute } from './db';
+import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface AuthUser {
   id: string;
@@ -29,7 +31,7 @@ export class LocalAuthAdapter {
   /**
    * Send magic link (logs to console in dev)
    */
-  async sendMagicLink(email: string): Promise<{ success: boolean; magicLink?: string }> {
+  async sendMagicLink(email: string, baseUrl: string = 'http://localhost:3000'): Promise<{ success: boolean; magicLink?: string }> {
     // Find or create user
     let users = await query<{ id: string; email: string }>(
       'SELECT id, email FROM auth.users WHERE email = $1',
@@ -56,7 +58,7 @@ export class LocalAuthAdapter {
       [user.id, token, expiresAt]
     );
 
-    const magicLink = `http://localhost:3000/auth/verify?token=${token}`;
+    const magicLink = `${baseUrl}/auth/verify?token=${token}`;
 
     // Log to console (dev only)
     console.log('\n' + '='.repeat(80));
@@ -142,33 +144,95 @@ export class LocalAuthAdapter {
 }
 
 /**
- * Supabase Auth adapter (future production)
+ * Supabase Auth adapter (production)
  */
 export class SupabaseAuthAdapter {
-  // TODO: Implement Supabase Auth integration
-  // Will use @supabase/ssr for server-side auth
-  async sendMagicLink(email: string): Promise<{ success: boolean }> {
-    throw new Error('Supabase Auth not yet implemented');
+  private supabase: SupabaseClient;
+
+  constructor() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase configuration: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY required');
+    }
+
+    this.supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    });
   }
 
+  /**
+   * Send magic link via Supabase Auth
+   */
+  async sendMagicLink(email: string, redirectTo: string): Promise<{ success: boolean }> {
+    const { error } = await this.supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: redirectTo,
+      },
+    });
+
+    if (error) {
+      console.error('Supabase magic link error:', error);
+      return { success: false };
+    }
+
+    return { success: true };
+  }
+
+  /**
+   * Verify token is not used directly with Supabase (uses callback route)
+   */
   async verifyToken(token: string): Promise<AuthSession | null> {
-    throw new Error('Supabase Auth not yet implemented');
+    throw new Error('Use callback route for Supabase auth verification');
   }
 
-  async getSession(token: string): Promise<AuthSession | null> {
-    throw new Error('Supabase Auth not yet implemented');
+  /**
+   * Get session from Supabase access token
+   */
+  async getSession(accessToken: string): Promise<AuthSession | null> {
+    const { data: { user }, error } = await this.supabase.auth.getUser(accessToken);
+
+    if (error || !user) {
+      return null;
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email!,
+        createdAt: new Date(user.created_at),
+      },
+      token: accessToken,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    };
   }
 
+  /**
+   * Create session - for Supabase, the session is managed by Supabase Auth
+   */
   async createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
-    throw new Error('Supabase Auth not yet implemented');
+    throw new Error('Supabase manages sessions internally');
   }
 
+  /**
+   * Delete session (logout)
+   */
   async deleteSession(token: string): Promise<void> {
-    throw new Error('Supabase Auth not yet implemented');
+    await this.supabase.auth.signOut();
   }
 
+  /**
+   * Set auth context for RLS - Supabase handles this automatically
+   */
   async setAuthContext(userId: string): Promise<void> {
-    throw new Error('Supabase Auth not yet implemented');
+    // Supabase RLS uses auth.uid() automatically from the JWT
+    // No manual context setting needed
   }
 }
 
@@ -176,8 +240,15 @@ export class SupabaseAuthAdapter {
  * Get auth adapter based on environment
  */
 export function getAuthAdapter(): LocalAuthAdapter | SupabaseAuthAdapter {
-  // For now, always use local adapter
-  // In production, check env var and return SupabaseAuthAdapter
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Use Supabase adapter if env vars are set
+  if (supabaseUrl && supabaseKey) {
+    return new SupabaseAuthAdapter();
+  }
+
+  // Fall back to local adapter for development
   return new LocalAuthAdapter();
 }
 

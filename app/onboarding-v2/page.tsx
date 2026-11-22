@@ -232,7 +232,7 @@ export default function OnboardingV2Page() {
                       {attempt.hfCredits !== undefined && attempt.hfCredits > 0 && attempt.elChars && ' • '}
                       {attempt.elChars !== undefined && attempt.elChars > 0 && `${attempt.elChars.toLocaleString()} EL chars`}
                       {attempt.failed && <span className="ml-2 text-red-600">(Failed)</span>}
-                      {attempt.costUsd === 0 && !attempt.hfCredits && !attempt.elChars && '$0.00'}
+                      {attempt.costUsd === 0 && !attempt.hfCredits && !attempt.elChars && ' $0.00'}
                     </div>
                   </div>
                 </label>

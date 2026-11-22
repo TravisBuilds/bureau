@@ -5,7 +5,7 @@ import { Building2, Shield, RefreshCw, Ban, ChevronDown, ChevronRight, AlertCirc
 import { useRouter } from 'next/navigation';
 import { SAMPLE_CONNECTIONS } from '@/lib/sample-connections';
 import { Connection, PROVIDER_DEFINITIONS, getConnectionFreshness } from '@/lib/connection-types';
-import { formatFullDateTime } from '@/lib/timezone-utils';
+import { formatFullDateTime, formatShortDate } from '@/lib/timezone-utils';
 
 export default function ConnectionsPage() {
   const router = useRouter();
@@ -209,13 +209,13 @@ export default function ConnectionsPage() {
                         </div>
                       </div>
 
-                      {/* Last Sync */}
+                      {/* Data Pull Time */}
                       <div className="text-right">
-                        <div className={`text-sm font-medium ${freshness.status === 'fresh' ? 'text-slate-900' : 'text-slate-400'}`}>
-                          {freshness.message}
+                        <div className="text-sm font-medium text-slate-900">
+                          {conn.lastSyncAt ? formatShortDate(conn.lastSyncAt) : '—'}
                         </div>
                         {conn.status === 'connected' && (
-                          <div className="text-xs text-slate-400 mt-1">Last sync</div>
+                          <div className="text-xs text-slate-400 mt-1">Data pulled</div>
                         )}
                       </div>
 

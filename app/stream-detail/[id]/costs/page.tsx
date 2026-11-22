@@ -33,10 +33,15 @@ interface Summary {
   avg_cost_per_1k_views: number;
 }
 
-function TrustBadge({ level, sources }: { level: string; sources: string[] }) {
+function TrustBadge({ level, sources, costCoverageNote }: { level: string; sources: string[]; costCoverageNote?: string }) {
+  // Check if this is mixed trust (verified + estimated)
+  const hasEstimated = costCoverageNote?.toLowerCase().includes('estimated') || 
+                       sources.some(s => s.includes('_est'));
+  const isMixed = level === 'verified' && hasEstimated;
+  
   const badges = {
     verified: { 
-      label: 'Verified', 
+      label: isMixed ? 'Verified · 1 estimated line' : 'Verified',
       bg: 'bg-green-100', 
       text: 'text-green-800',
       icon: '✓'
@@ -258,7 +263,11 @@ export default function StreamCostsPage({ params }: { params: Promise<{ id: stri
                       {isPublished && output.costPer1kViews !== null ? `$${output.costPer1kViews.toFixed(2)}` : '—'}
                     </td>
                     <td className="text-center py-4 px-4">
-                      <TrustBadge level={output.trust_level} sources={output.verified_sources} />
+                      <TrustBadge 
+                        level={output.trust_level} 
+                        sources={output.verified_sources} 
+                        costCoverageNote={output.cost_coverage_note}
+                      />
                     </td>
                   </tr>
                 );

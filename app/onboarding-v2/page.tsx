@@ -21,6 +21,7 @@ interface CostAttempt {
   hfCredits?: number;
   elChars?: number;
   failed: boolean;
+  trust?: 'verified' | 'estimated';
 }
 
 export default function OnboardingV2Page() {
@@ -45,9 +46,9 @@ export default function OnboardingV2Page() {
     // REAL Ember Ep12 data from ep12-manifest.json
     if (source === 'manual') {
       setAttempts([
-        { id: '1', description: 'Higgsfield stills (ep12-manifest.json)', costUsd: 8.125, failed: false },
-        { id: '2', description: 'Higgsfield clips (ep12-manifest.json)', costUsd: 22.75, failed: false },
-        { id: '3', description: 'ElevenLabs VO - estimated (ep12-manifest.json)', costUsd: 0.05, failed: false },
+        { id: '1', description: 'Higgsfield stills', costUsd: 8.125, hfCredits: 325, failed: false, trust: 'verified' },
+        { id: '2', description: 'Higgsfield clips', costUsd: 22.75, hfCredits: 169, failed: false, trust: 'verified' },
+        { id: '3', description: 'ElevenLabs VO', costUsd: 0.05, failed: false, trust: 'estimated' },
       ]);
     }
     setStep('assign');
@@ -261,9 +262,10 @@ export default function OnboardingV2Page() {
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-gray-600">Native credits</span>
                   <div className="text-right">
-                    {assignedHF > 0 && <div>{assignedHF.toLocaleString()} HF credits</div>}
+                    {assignedHF > 0 && <div>{assignedHF.toLocaleString()} Higgsfield credits</div>}
                     {assignedEL > 0 && <div>{assignedEL.toLocaleString()} EL chars</div>}
                     {assignedHF === 0 && assignedEL === 0 && <div className="text-gray-400">Not recorded</div>}
+                    {assignedHF > 0 && assignedEL === 0 && <div className="text-xs text-gray-400 mt-1">ElevenLabs not recorded</div>}
                   </div>
                 </div>
                 <div className="flex justify-between py-2 border-b">
@@ -277,6 +279,28 @@ export default function OnboardingV2Page() {
                   <span className="text-gray-500">{unallocated} charges</span>
                 </div>
               </div>
+
+              {/* Charge breakdown */}
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Charges assigned:</h3>
+                <div className="space-y-2">
+                  {attempts.filter(a => assigned.has(a.id)).map(attempt => (
+                    <div key={attempt.id} className="flex justify-between items-center text-sm py-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-700">{attempt.description}</span>
+                        {attempt.trust === 'verified' && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">✓ Verified</span>
+                        )}
+                        {attempt.trust === 'estimated' && (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">~ Estimated</span>
+                        )}
+                      </div>
+                      <span className="font-medium text-gray-900">${attempt.costUsd?.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="mt-6 p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
                 💡 This cost includes: assigned cash charges ({assigned.size} items)
                 {(assignedHF > 0 || assignedEL > 0) && (

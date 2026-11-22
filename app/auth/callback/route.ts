@@ -7,10 +7,11 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const token_hash = requestUrl.searchParams.get('token_hash');
   const type = requestUrl.searchParams.get('type');
+  const code = requestUrl.searchParams.get('code'); // PKCE flow
   const next = requestUrl.searchParams.get('next') || '/';
 
-  // Check if this is a Supabase auth callback
-  if (token_hash && type) {
+  // Check if this is a Supabase auth callback (magic link or PKCE)
+  if ((token_hash && type) || code) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -46,34 +47,73 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Verify the OTP - this sets the session cookies automatically
-    const { data, error } = await supabase.auth.verifyOtp({
-      token_hash,
-      type: type as any,
-    });
+    // Verify the auth code (OTP or PKCE)
+    let authData;
+    
+    if (token_hash && type) {
+      // Magic link (OTP) flow
+      const { data, error } = await supabase.auth.verifyOtp({
+        token_hash,
+        type: type as any,
+      });
+      
+      if (error) {
+        console.error('Supabase OTP verification error:', error);
+        return NextResponse.redirect(
+          new URL('/auth/signin?error=invalid-token', request.url)
+        );
+      }
+      
+      authData = data;
+    } else if (code) {
+      // PKCE flow
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      
+      if (error) {
+        console.error('Supabase code exchange error:', error);
+        return NextResponse.redirect(
+          new URL('/auth/signin?error=invalid-token', request.url)
+        );
+      }
+      
+      authData = data;
+    } else {
+      return NextResponse.redirect(
+        new URL('/auth/signin?error=missing-params', request.url)
+      );
+    }
 
-    if (error) {
-      console.error('Supabase OTP verification error:', error);
+    if (!authData.user || !authData.session) {
       return NextResponse.redirect(
         new URL('/auth/signin?error=invalid-token', request.url)
       );
     }
 
-    if (!data.user || !data.session) {
-      return NextResponse.redirect(
-        new URL('/auth/signin?error=invalid-token', request.url)
-      );
-    }
-
-    const userId = data.user.id;
-    const email = data.user.email!;
+    const userId = authData.user.id;
+    const email = authData.user.email!;
 
     try {
       // Note: DO NOT insert into auth.users - Supabase Auth owns that table
       // Bureau only creates workspace/membership records
 
       // Use withUser to set JWT claims for RLS
-      const { withUser } = await import('@/lib/db');
+      const { withUser, query } = await import('@/lib/db');
+      
+      // Read invite code from cookie
+      const inviteCode = cookieStore.get('bureau_invite')?.value;
+      
+      // Claim invite if provided
+      let inviteClaimed = false;
+      if (inviteCode) {
+        const claimResult = await query<{ claim_pilot_invite: boolean }>(
+          'SELECT bureau.claim_pilot_invite($1, $2) as claim_pilot_invite',
+          [inviteCode, userId]
+        );
+        inviteClaimed = claimResult[0]?.claim_pilot_invite || false;
+        
+        // Clear the cookie
+        cookieStore.delete('bureau_invite');
+      }
       
       const workspaceId = await withUser(userId, email, async (client) => {
         // Check if user has a workspace
@@ -85,11 +125,24 @@ export async function GET(request: NextRequest) {
         );
 
         if (workspaces.rows.length === 0) {
+          // Check if user has a valid claimed invite
+          const invites = await client.query(
+            `SELECT code FROM bureau.pilot_invites 
+             WHERE claimed_by = $1
+             AND expires_at > NOW()`,
+            [userId]
+          );
+          
+          if (invites.rows.length === 0 && !inviteClaimed) {
+            // No workspace and no valid invite - redirect to invite required page
+            throw new Error('INVITE_REQUIRED');
+          }
+          
           // Create workspace using SECURITY DEFINER function
           const workspaceName = `${email.split('@')[0]}'s Workspace`;
           const result = await client.query(
-            'SELECT bureau.bootstrap_workspace($1) as workspace_id',
-            [workspaceName]
+            'SELECT bureau.bootstrap_workspace($1, $2) as workspace_id',
+            [workspaceName, email]
           );
           return result.rows[0].workspace_id;
         }
@@ -115,6 +168,11 @@ export async function GET(request: NextRequest) {
       // User has workspace, go to top floor
       return NextResponse.redirect(new URL(next === '/' ? '/top-floor' : next, request.url));
     } catch (error) {
+      if (error instanceof Error && error.message === 'INVITE_REQUIRED') {
+        return NextResponse.redirect(
+          new URL('/auth/signup?error=invite-required', request.url)
+        );
+      }
       console.error('Error checking/creating workspace:', error);
       return NextResponse.redirect(
         new URL('/auth/signin?error=workspace-error', request.url)

@@ -42,17 +42,19 @@ export async function POST(request: NextRequest) {
     
     const token = authHeader.substring(7); // Remove "Bearer "
     
-    // Look up token using SECURITY DEFINER function (bypasses RLS)
+    // Look up token using SECURITY DEFINER function (bypasses RLS, returns email)
     const tokenRows = await query<{
       workspace_id: string;
       user_id: string;
+      user_email: string;
       token_id: string;
     }>(
-      `SELECT workspace_id, user_id, token_id
+      `SELECT workspace_id, user_id, user_email, token_id
        FROM bureau.resolve_ingest_token($1)`,
       [token]
     );
     
+    // RETURNS TABLE means empty set on miss (not NULL row)
     if (tokenRows.length === 0) {
       return NextResponse.json({ 
         error: 'Invalid or revoked token' 
@@ -60,20 +62,7 @@ export async function POST(request: NextRequest) {
     }
     
     const tokenInfo = tokenRows[0];
-    
-    // Get user email for withUser (need to look up in auth.users)
-    const userRows = await query<{ email: string }>(
-      'SELECT email FROM auth.users WHERE id = $1::uuid',
-      [tokenInfo.user_id]
-    );
-    
-    if (userRows.length === 0) {
-      return NextResponse.json({ 
-        error: 'Token owner not found' 
-      }, { status: 500 });
-    }
-    
-    const userEmail = userRows[0].email;
+    const userEmail = tokenInfo.user_email;
     
     // 2. Parse payload
     const payload: IngestPayload = await request.json();

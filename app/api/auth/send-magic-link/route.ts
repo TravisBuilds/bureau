@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthAdapter, LocalAuthAdapter, SupabaseAuthAdapter } from '@/lib/auth-adapter';
 import { query, execute } from '@/lib/db';
+import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,8 +46,16 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Note: Actual claiming happens after Supabase creates the user
-      // See callback route for bureau.claim_pilot_invite() call
+      // Store invite code in short-lived cookie for callback to claim
+      if (inviteCode) {
+        const cookieStore = await cookies();
+        cookieStore.set('bureau_invite', inviteCode, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 600, // 10 minutes
+        });
+      }
     }
     
     // Build redirect URL from request origin or env vars

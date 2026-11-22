@@ -42,12 +42,12 @@ export default function OnboardingV2Page() {
   };
 
   const handleSourceSelected = () => {
-    // Simulate loading attempts (using REAL Ember Ep12 ledger: $30.93 total, cash only)
+    // REAL Ember Ep12 data from ep12-manifest.json
     if (source === 'manual') {
       setAttempts([
-        { id: '1', description: 'Video generation - Higgsfield (ledger)', costUsd: 20.15, failed: false },
-        { id: '2', description: 'Voice generation - ElevenLabs (ledger)', costUsd: 8.42, failed: false },
-        { id: '3', description: 'Background music license (ledger)', costUsd: 2.36, failed: false },
+        { id: '1', description: 'Higgsfield stills (ep12-manifest.json)', costUsd: 8.125, failed: false },
+        { id: '2', description: 'Higgsfield clips (ep12-manifest.json)', costUsd: 22.75, failed: false },
+        { id: '3', description: 'ElevenLabs VO - estimated (ep12-manifest.json)', costUsd: 0.05, failed: false },
       ]);
     }
     setStep('assign');

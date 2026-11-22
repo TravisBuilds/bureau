@@ -53,11 +53,12 @@ BEGIN
   
   RAISE NOTICE 'Created Ember stream: %', v_ember_stream_id;
   
-  -- Ember output costs (REAL data from production ledger)
+  -- Ember output costs (REAL data from ep12-manifest.json)
   INSERT INTO output_costs (
     stream_id, output_id, output_name, output_type,
     generation_cost_usd, failed_renders_cost_usd,
     elevenlabs_characters, elevenlabs_cost_usd,
+    higgsfield_credits, higgsfield_cost_usd,
     views, trust_level, verified_sources,
     created_at, published_at,
     lifecycle, cost_coverage_note
@@ -71,13 +72,15 @@ BEGIN
     0,
     NULL,
     NULL,
+    NULL, -- Higgsfield credits not recorded for Ep11
+    NULL,
     15,
     'verified',
     ARRAY['production-ledger', 'youtube-api'],
     '2026-11-15'::timestamptz,
     '2026-11-15'::timestamptz,
     'published',
-    'Direct Higgsfield costs only, no failed attempts'
+    'Direct Higgsfield costs; credits and failed attempts not recorded'
   ),
   (
     v_ember_stream_id,
@@ -86,15 +89,17 @@ BEGIN
     'short',
     30.93,
     0,
+    NULL, -- ElevenLabs chars not recorded
     NULL,
+    494, -- Higgsfield credits used (3257 → 2763)
     NULL,
     49,
     'verified',
-    ARRAY['production-ledger', 'youtube-api'],
+    ARRAY['ep12-manifest.json', 'youtube-api'],
     '2026-11-18'::timestamptz,
     '2026-11-18'::timestamptz,
     'published',
-    'Direct Higgsfield costs only, no failed attempts'
+    'Higgsfield stills ($8.13) and clips ($22.75) plus estimated ElevenLabs VO ($0.05); 494 HF credits; failed attempts not recorded'
   );
   
   RAISE NOTICE 'Added Ember costs: Ep11 $30.63 (15 views), Ep12 $30.93 (49 views)';

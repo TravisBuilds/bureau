@@ -66,7 +66,7 @@ export default function AllocatePage() {
     {
       id: 'c4',
       date: '2026-11-18',
-      description: 'Manual charge - stock footage',
+      description: 'Example unallocated charge #1',
       costUsd: 49.99,
       trust: 'declared',
       failed: false,
@@ -75,7 +75,7 @@ export default function AllocatePage() {
     {
       id: 'c5',
       date: '2026-11-19',
-      description: 'Background music license',
+      description: 'Example unallocated charge #2',
       costUsd: 29.99,
       trust: 'declared',
       failed: false,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, execute } from '@/lib/db';
+import { withUser } from '@/lib/db';
+import { requireAuth } from '@/lib/auth-helpers';
 import crypto from 'crypto';
 
 /**
@@ -11,11 +12,8 @@ import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
-    // For now, we'll use a hardcoded workspace ID (Travis's workspace)
-    // In production, this would come from the session
-    const workspaceId = '3713a630-8284-4c87-ba4d-8d4c47e13473';
-    
-    const { name, streamId } = await request.json();
+    const user = await requireAuth();
+    const { name, stream_id } = await request.json();
     
     if (!name) {
       return NextResponse.json({ error: 'Token name required' }, { status: 400 });
@@ -24,22 +22,28 @@ export async function POST(request: NextRequest) {
     // Generate secure token
     const token = `bureau_${crypto.randomBytes(32).toString('hex')}`;
     
-    // Create token in database
-    const rows = await query<{ id: string; token: string }>(
-      `INSERT INTO ingest_tokens (workspace_id, name, token)
-       VALUES ($1, $2, $3)
-       RETURNING id, token`,
-      [workspaceId, name, token]
-    );
+    // Create token in database with RLS
+    const result = await withUser(user.id, user.email, async (client) => {
+      const rows = await client.query(
+        `INSERT INTO bureau.ingest_tokens (workspace_id, name, token, stream_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, token`,
+        [user.workspaceId, name, token, stream_id || null]
+      );
+      return rows.rows[0];
+    });
     
     return NextResponse.json({
       success: true,
-      token: rows[0].token,
-      id: rows[0].id,
+      token: result.token,
+      id: result.id,
       name
     });
     
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     console.error('Error creating token:', error);
     return NextResponse.json({ 
       error: 'Failed to create token',
@@ -50,29 +54,27 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // For now, hardcoded workspace
-    const workspaceId = '3713a630-8284-4c87-ba4d-8d4c47e13473';
+    const user = await requireAuth();
     
-    const tokens = await query<{
-      id: string;
-      name: string;
-      token: string;
-      created_at: Date;
-      last_used_at: Date | null;
-      revoked_at: Date | null;
-    }>(
-      `SELECT 
-        t.id, t.name, t.token,
-        t.created_at, t.last_used_at, t.revoked_at
-       FROM ingest_tokens t
-       WHERE t.workspace_id = $1
-       ORDER BY t.created_at DESC`,
-      [workspaceId]
-    );
+    const tokens = await withUser(user.id, user.email, async (client) => {
+      const result = await client.query(
+        `SELECT 
+          t.id, t.name, t.token,
+          t.created_at, t.last_used_at, t.revoked_at
+         FROM bureau.ingest_tokens t
+         WHERE t.workspace_id = $1
+         ORDER BY t.created_at DESC`,
+        [user.workspaceId]
+      );
+      return result.rows;
+    });
     
     return NextResponse.json({ tokens });
     
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     console.error('Error listing tokens:', error);
     return NextResponse.json({ 
       error: 'Failed to list tokens',

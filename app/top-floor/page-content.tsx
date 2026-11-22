@@ -1,16 +1,44 @@
 'use client';
 
-import { Building2, Shield, AlertCircle } from 'lucide-react';
-import { REAL_STREAMS, calculateRealRollup, ATTENTION_ITEMS } from '@/lib/real-stream-data';
+import { Building2, Shield, AlertCircle, Plus, Key } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import MetricStreamCard from '@/components/MetricStreamCard';
+import { formatDistanceToNow } from 'date-fns';
 
-export default function TopFloorPageContent() {
+interface Stream {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  log_count: string;
+  total_cost: string;
+}
+
+interface IngestLog {
+  id: string;
+  payload: any;
+  created_at: string;
+  status: string;
+  stream_name: string;
+}
+
+interface TopFloorPageContentProps {
+  streams: Stream[];
+  recentLogs: IngestLog[];
+  tokensCount: number;
+  userEmail: string;
+}
+
+export default function TopFloorPageContent({ 
+  streams, 
+  recentLogs, 
+  tokensCount,
+  userEmail 
+}: TopFloorPageContentProps) {
   const router = useRouter();
   
-  // Real streams with actual data (demo/sample data for now)
-  const visibleStreams = REAL_STREAMS.filter(s => s.visible);
-  const rollup = calculateRealRollup();
+  const totalCost = streams.reduce((sum, s) => sum + parseFloat(s.total_cost || '0'), 0);
+  const totalLogs = streams.reduce((sum, s) => sum + parseInt(s.log_count || '0'), 0);
+  const connectedStreams = streams.filter(s => s.status === 'active').length;
 
   return (
     <div className="min-h-screen bg-white">
@@ -39,117 +67,166 @@ export default function TopFloorPageContent() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
-        {/* Demo Data Notice */}
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 mt-0.5 text-blue-600" />
-            <div className="flex-1">
-              <p className="text-sm text-blue-900">
-                <strong>Demo Mode:</strong> You're viewing sample data. Connect your streams to see real metrics.
-              </p>
+        {/* Empty State for New Users */}
+        {streams.length === 0 && (
+          <div className="text-center py-16">
+            <Building2 className="w-16 h-16 mx-auto mb-6 text-slate-300" />
+            <h2 className="text-2xl font-semibold text-slate-900 mb-3">Welcome to Bureau</h2>
+            <p className="text-slate-600 mb-8 max-w-md mx-auto">
+              Connect your first AI agent to start tracking costs, outputs, and revenue.
+            </p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => router.push('/settings/connect-agent')}
+                className="flex items-center gap-2 px-6 py-3 bg-highstreet-purple text-white rounded-lg hover:bg-highstreet-purple/90"
+              >
+                <Key className="w-5 h-5" />
+                Get Started
+              </button>
+              <button
+                onClick={() => router.push('/onboarding')}
+                className="flex items-center gap-2 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
+              >
+                <Plus className="w-5 h-5" />
+                Setup Walkthrough
+              </button>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Cross-Stream Rollup */}
-        <div className="mb-12">
-          <h2 className="text-lg font-medium text-slate-900 mb-6">Overview</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="p-4 bg-white border border-slate-200 rounded-lg">
-              <div className="text-sm text-slate-500 mb-1">Monthly Spend</div>
-              <div className="text-2xl font-semibold text-slate-400">
-                Not reconciled
+        {/* Overview Stats */}
+        {streams.length > 0 && (
+          <>
+            <div className="mb-12">
+              <h2 className="text-lg font-medium text-slate-900 mb-6">Overview</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="p-4 bg-white border border-slate-200 rounded-lg">
+                  <div className="text-sm text-slate-500 mb-1">Total Cost</div>
+                  <div className="text-2xl font-semibold text-slate-900">
+                    ${totalCost.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">all time</div>
+                </div>
+
+                <div className="p-4 bg-white border border-slate-200 rounded-lg">
+                  <div className="text-sm text-slate-500 mb-1">Activity</div>
+                  <div className="text-2xl font-semibold text-slate-900">
+                    {totalLogs}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">total logs</div>
+                </div>
+
+                <div className="p-4 bg-white border border-slate-200 rounded-lg">
+                  <div className="text-sm text-slate-500 mb-1">Streams</div>
+                  <div className="text-2xl font-semibold text-slate-900">
+                    {connectedStreams}/{streams.length}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">active</div>
+                </div>
+
+                <div className="p-4 bg-white border border-slate-200 rounded-lg">
+                  <div className="text-sm text-slate-500 mb-1">Tokens</div>
+                  <div className="text-2xl font-semibold text-slate-900">
+                    {tokensCount}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">active</div>
+                </div>
               </div>
-              <div className="text-xs text-slate-400 mt-1">partial coverage</div>
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-lg">
-              <div className="text-sm text-slate-500 mb-1">Income</div>
-              <div className="text-2xl font-semibold text-slate-400">
-                Not connected
-              </div>
-              <div className="text-xs text-slate-400 mt-1">across all streams</div>
-            </div>
-
-            <div className="p-4 bg-white border border-slate-200 rounded-lg">
-              <div className="text-sm text-slate-500 mb-1">Connected</div>
-              <div className="text-2xl font-semibold text-slate-900">
-                {rollup.connectedStreams}/{rollup.totalStreams}
-              </div>
-              <div className="text-xs text-slate-400 mt-1">streams (demo)</div>
-            </div>
-
-            <div className="p-4 bg-white border border-slate-200 rounded-lg">
-              <div className="text-sm text-slate-500 mb-1">Attention</div>
-              <div className={`text-2xl font-semibold ${rollup.attentionItems > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-                {rollup.attentionItems}
-              </div>
-              <div className="text-xs text-slate-400 mt-1">items (demo)</div>
-            </div>
-          </div>
-
-          {/* Attention Items */}
-          {ATTENTION_ITEMS.length > 0 && (
-            <div className="space-y-2">
-              {ATTENTION_ITEMS.map((item) => (
-                <div
-                  key={item.id}
-                  className={`p-4 rounded-lg border ${
-                    item.severity === 'critical' ? 'bg-red-50 border-red-200' :
-                    item.severity === 'warning' ? 'bg-amber-50 border-amber-200' :
-                    'bg-blue-50 border-blue-200'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className={`w-5 h-5 mt-0.5 ${
-                      item.severity === 'critical' ? 'text-red-600' :
-                      item.severity === 'warning' ? 'text-amber-600' :
-                      'text-blue-600'
-                    }`} />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-900">{item.streamName}</span>
-                        <span className="text-xs text-slate-500">•</span>
-                        <span className={`text-sm font-medium ${
-                          item.severity === 'critical' ? 'text-red-700' :
-                          item.severity === 'warning' ? 'text-amber-700' :
-                          'text-blue-700'
-                        }`}>
-                          {item.title}
-                        </span>
-                        <span className="text-xs text-slate-400">(demo)</span>
+            {/* Recent Activity */}
+            {recentLogs.length > 0 && (
+              <div className="mb-12">
+                <h2 className="text-lg font-medium text-slate-900 mb-6">Recent Activity</h2>
+                <div className="space-y-2">
+                  {recentLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="p-4 bg-white border border-slate-200 rounded-lg hover:border-slate-300 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            {log.stream_name && (
+                              <>
+                                <span className="text-sm font-medium text-slate-900">{log.stream_name}</span>
+                                <span className="text-xs text-slate-400">•</span>
+                              </>
+                            )}
+                            <span className="text-xs text-slate-500">
+                              {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-700">
+                            {log.payload.content || 'Log entry'}
+                          </p>
+                          {log.payload.metadata?.cost_usd && (
+                            <span className="inline-block mt-2 px-2 py-1 text-xs font-medium bg-slate-100 text-slate-700 rounded">
+                              Cost: ${parseFloat(log.payload.metadata.cost_usd).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-600 mt-1">{item.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Streams List */}
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-medium text-slate-900">Your Streams</h2>
+                <button
+                  onClick={() => router.push('/add-stream')}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-highstreet-purple border border-highstreet-purple rounded-lg hover:bg-highstreet-purple/5"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Stream
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {streams.map((stream) => (
+                  <div
+                    key={stream.id}
+                    onClick={() => router.push(`/stream-detail/${stream.id}`)}
+                    className="p-6 bg-white border border-slate-200 rounded-lg hover:border-highstreet-purple cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900">{stream.name}</h3>
+                        <p className="text-sm text-slate-500 capitalize">{stream.type}</p>
+                      </div>
+                      <span className={`px-2 py-1 text-xs font-medium rounded ${
+                        stream.status === 'active' 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {stream.status}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-xs text-slate-500 mb-1">Total Cost</div>
+                        <div className="text-lg font-semibold text-slate-900">
+                          ${parseFloat(stream.total_cost || '0').toFixed(2)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-500 mb-1">Log Entries</div>
+                        <div className="text-lg font-semibold text-slate-900">
+                          {stream.log_count}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Stream Cards */}
-        <div>
-          <h2 className="text-lg font-medium text-slate-900 mb-6">Your Streams (Demo)</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {visibleStreams.map((stream) => (
-              <MetricStreamCard
-                key={stream.id}
-                stream={stream}
-                onClick={() => router.push(`/stream-detail/${stream.id}`)}
-              />
-            ))}
-          </div>
-
-          {visibleStreams.length === 0 && (
-            <div className="text-center py-16 text-slate-400">
-              <Building2 className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-              <p className="text-sm">No streams configured yet</p>
-            </div>
-          )}
-        </div>
+          </>
+        )}
       </main>
     </div>
   );

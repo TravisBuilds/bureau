@@ -5,21 +5,26 @@ import { handlePostLogin } from '@/lib/post-login';
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate origin (same-origin only)
+    // Validate origin (same-origin only, reject missing)
     const origin = request.headers.get('origin');
     const host = request.headers.get('host');
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
     
-    if (origin) {
-      const originHost = new URL(origin).host;
-      const expectedHost = siteUrl ? new URL(siteUrl).host : host;
-      
-      if (originHost !== expectedHost && originHost !== host) {
-        return NextResponse.json(
-          { error: 'Invalid origin' },
-          { status: 403 }
-        );
-      }
+    if (!origin) {
+      return NextResponse.json(
+        { error: 'Missing origin header' },
+        { status: 403 }
+      );
+    }
+    
+    const originHost = new URL(origin).host;
+    const expectedHost = siteUrl ? new URL(siteUrl).host : host;
+    
+    if (originHost !== expectedHost && originHost !== host) {
+      return NextResponse.json(
+        { error: 'Invalid origin' },
+        { status: 403 }
+      );
     }
 
     // Parse request body
@@ -44,6 +49,8 @@ export async function POST(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {
         get(name: string) {
@@ -51,14 +58,26 @@ export async function POST(request: NextRequest) {
         },
         set(name: string, value: string, options: any) {
           try {
-            cookieStore.set({ name, value, ...options });
+            cookieStore.set({ 
+              name, 
+              value, 
+              ...options,
+              secure: isProduction,
+              sameSite: 'lax',
+            });
           } catch (error) {
             // Route handler can set cookies
           }
         },
         remove(name: string, options: any) {
           try {
-            cookieStore.set({ name, value: '', ...options });
+            cookieStore.set({ 
+              name, 
+              value: '', 
+              ...options,
+              secure: isProduction,
+              sameSite: 'lax',
+            });
           } catch (error) {
             // Route handler can remove cookies
           }

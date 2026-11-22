@@ -77,34 +77,48 @@ export async function POST(request: NextRequest) {
     const { withUser } = await import('@/lib/db');
     
     const { streamId, ingestLogId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
-      // Look up stream by name or ID
+      // Look up or create stream by name or ID
       let streamId: string | null = null;
       
       if (payload.stream) {
-        // Try by name (case-insensitive)
-        const streamRows = await client.query(
-          `SELECT id FROM bureau.streams 
-           WHERE workspace_id = $1 
-           AND name ILIKE $2`,
-          [tokenInfo.workspace_id, payload.stream]
-        );
+        // Check if it's a valid UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const isUuid = uuidRegex.test(payload.stream);
         
-        if (streamRows.rows.length > 0) {
-          streamId = streamRows.rows[0].id;
-        } else {
-          // Try as UUID if name lookup failed
-          try {
-            const uuidStreamRows = await client.query(
-              `SELECT id FROM bureau.streams 
-               WHERE workspace_id = $1 
-               AND id = $2::uuid`,
+        if (isUuid) {
+          // Try as UUID first
+          const uuidStreamRows = await client.query(
+            `SELECT id FROM bureau.streams 
+             WHERE workspace_id = $1 
+             AND id = $2::uuid`,
+            [tokenInfo.workspace_id, payload.stream]
+          );
+          
+          if (uuidStreamRows.rows.length > 0) {
+            streamId = uuidStreamRows.rows[0].id;
+          }
+        }
+        
+        if (!streamId) {
+          // Try by name (case-insensitive)
+          const streamRows = await client.query(
+            `SELECT id FROM bureau.streams 
+             WHERE workspace_id = $1 
+             AND name ILIKE $2`,
+            [tokenInfo.workspace_id, payload.stream]
+          );
+          
+          if (streamRows.rows.length > 0) {
+            streamId = streamRows.rows[0].id;
+          } else {
+            // Auto-create stream by name for new pilots
+            const createRows = await client.query(
+              `INSERT INTO bureau.streams (workspace_id, name, type, status)
+               VALUES ($1, $2, 'agent', 'active')
+               RETURNING id`,
               [tokenInfo.workspace_id, payload.stream]
             );
-            if (uuidStreamRows.rows.length > 0) {
-              streamId = uuidStreamRows.rows[0].id;
-            }
-          } catch (err) {
-            // Not a valid UUID, ignore
+            streamId = createRows.rows[0].id;
           }
         }
       }

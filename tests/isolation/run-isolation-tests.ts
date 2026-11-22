@@ -4,7 +4,11 @@
  * Usage: npx tsx tests/isolation/run-isolation-tests.ts
  */
 
-import { query, execute, queryWithUser } from '../../lib/db';
+// Load environment variables first
+import dotenv from 'dotenv';
+dotenv.config();
+
+import { query, queryAdmin, executeAdmin, queryWithUser } from '../../lib/db';
 
 async function runTests() {
   console.log('🧪 Running Workspace Isolation Tests\n');
@@ -15,47 +19,47 @@ async function runTests() {
   // Setup: Create two users and workspaces
   console.log('📦 Setting up test data...');
   
-  const userARows = await query<{ id: string }>(
+  const userARows = await queryAdmin<{ id: string }>(
     `INSERT INTO auth.users (email) VALUES ($1) RETURNING id`,
     ['isolation-test-a@test.com']
   );
   const userAId = userARows[0].id;
   
-  const workspaceARows = await query<{ id: string }>(
+  const workspaceARows = await queryAdmin<{ id: string }>(
     `INSERT INTO workspaces (name, created_by) VALUES ($1, $2) RETURNING id`,
     ['Test Workspace A', userAId]
   );
   const workspaceAId = workspaceARows[0].id;
   
-  await execute(
+  await executeAdmin(
     `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
     [workspaceAId, userAId]
   );
   
-  await execute(
+  await executeAdmin(
     `INSERT INTO streams (id, workspace_id, name, category, description) 
      VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', $1, 'Stream A', 'production', 'Test')`,
     [workspaceAId]
   );
   
-  const userBRows = await query<{ id: string }>(
+  const userBRows = await queryAdmin<{ id: string }>(
     `INSERT INTO auth.users (email) VALUES ($1) RETURNING id`,
     ['isolation-test-b@test.com']
   );
   const userBId = userBRows[0].id;
   
-  const workspaceBRows = await query<{ id: string }>(
+  const workspaceBRows = await queryAdmin<{ id: string }>(
     `INSERT INTO workspaces (name, created_by) VALUES ($1, $2) RETURNING id`,
     ['Test Workspace B', userBId]
   );
   const workspaceBId = workspaceBRows[0].id;
   
-  await execute(
+  await executeAdmin(
     `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
     [workspaceBId, userBId]
   );
   
-  await execute(
+  await executeAdmin(
     `INSERT INTO streams (id, workspace_id, name, category, description) 
      VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', $1, 'Stream B', 'production', 'Test')`,
     [workspaceBId]
@@ -88,9 +92,21 @@ async function runTests() {
   
   // Test 2: User A cannot read User B's streams
   try {
-    const streams = await queryWithUser<{ id: string }>(
+    // Debug: Check workspace_members for both users (using admin to check test data)
+    const wmA = await queryAdmin<{ workspace_id: string; user_id: string }>(
+      `SELECT workspace_id, user_id FROM workspace_members WHERE user_id = $1`,
+      [userAId]
+    );
+    const wmB = await queryAdmin<{ workspace_id: string; user_id: string }>(
+      `SELECT workspace_id, user_id FROM workspace_members WHERE user_id = $1`,
+      [userBId]
+    );
+    
+    console.log(`   Debug: User A member of ${wmA.length} workspace(s), User B member of ${wmB.length} workspace(s)`);
+    
+    const streams = await queryWithUser<{ id: string; workspace_id: string }>(
       userAId,
-      `SELECT id FROM streams WHERE workspace_id = $1`,
+      `SELECT id, workspace_id FROM streams WHERE workspace_id = $1`,
       [workspaceBId]
     );
     
@@ -100,6 +116,14 @@ async function runTests() {
     } else {
       console.log('❌ Test 2: User A CAN read User B\'s streams (RLS BROKEN)');
       console.log('   Found streams:', streams);
+      console.log('   Expected workspace:', workspaceBId);
+      
+      // Check if RLS is actually enabled
+      const rlsCheck = await queryAdmin<{ tablename: string; rowsecurity: boolean }>(
+        `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' AND tablename = 'streams'`
+      );
+      console.log('   RLS enabled on streams:', rlsCheck[0]?.rowsecurity);
+      
       failed++;
     }
   } catch (error) {
@@ -165,10 +189,10 @@ async function runTests() {
     failed++;
   }
   
-  // Cleanup
+  // Cleanup (using admin connection)
   console.log('\n🧹 Cleaning up test data...');
-  await execute(`DELETE FROM workspaces WHERE id IN ($1, $2)`, [workspaceAId, workspaceBId]);
-  await execute(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [userAId, userBId]);
+  await executeAdmin(`DELETE FROM workspaces WHERE id IN ($1, $2)`, [workspaceAId, workspaceBId]);
+  await executeAdmin(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [userAId, userBId]);
   console.log('✓ Cleanup complete\n');
   
   // Summary

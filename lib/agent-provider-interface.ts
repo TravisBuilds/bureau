@@ -96,7 +96,7 @@ export interface AgentProvider {
   /**
    * List available agents for this provider
    */
-  listAgents(credentials: AgentCredentials): Promise<ConnectedAgent[]>;
+  listAgents(credentials?: AgentCredentials): Promise<ConnectedAgent[]>;
   
   /**
    * Dispatch a task to an agent

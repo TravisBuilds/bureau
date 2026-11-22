@@ -28,7 +28,7 @@ export class MockProvider implements AgentProvider {
     };
   }
   
-  async listAgents(): Promise<ConnectedAgent[]> {
+  async listAgents(credentials?: AgentCredentials): Promise<ConnectedAgent[]> {
     // Return mock agents
     return [
       {
@@ -37,6 +37,8 @@ export class MockProvider implements AgentProvider {
         providerType: 'mock',
         displayName: 'Mock Agent Alpha',
         capabilities: ['code', 'research', 'testing'],
+        costTier: 'moderate',
+        speedTier: 'fast',
         status: 'connected',
         lastActivity: new Date().toISOString(),
       },
@@ -45,7 +47,9 @@ export class MockProvider implements AgentProvider {
         providerId: 'mock-provider',
         providerType: 'mock',
         displayName: 'Mock Agent Beta',
-        capabilities: ['code', 'documentation'],
+        capabilities: ['code', 'content'],
+        costTier: 'moderate',
+        speedTier: 'fast',
         status: 'connected',
         lastActivity: new Date().toISOString(),
       },

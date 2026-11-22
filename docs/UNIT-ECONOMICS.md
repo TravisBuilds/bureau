@@ -376,36 +376,62 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 
 ---
 
-## Gross Margin Analysis at $39/month
+## Pricing Tiers (Updated)
+
+**Free Tier:**
+- 2 streams maximum
+- Manual/CSV entry only
+- Cost ledger included
+- No automated sync
+
+**Plus Tier:**
+- **Price:** $9/month or $79/year ($6.58/mo effective)
+- Unlimited streams
+- API connectors (ElevenLabs, Higgsfield, YouTube)
+- Automated sync every 4 hours
+- Weekly reviews with LLM-powered findings
+
+**LLM Cost Inclusion:**
+- ✅ **LLM calls ARE included** in per-user variable cost ($0.054/user/month)
+- Uses Claude 3.5 Haiku for weekly reviews and first findings
+- **Token estimates per user per month:**
+  - Weekly reviews: 4 reviews × (2,000 input + 500 output) = 10,000 tokens
+  - First finding: 500 input + 200 output = 700 tokens (one-time)
+  - **Monthly total:** ~10,700 tokens = $0.054
+- Free tier: No LLM calls (users write their own reviews)
+- Plus tier: LLM calls included in price
+
+## Gross Margin Analysis at $9/month
 
 ### Assumptions
 
-- **Price:** $39/user/month
-- **Target margin:** 80%+ (SaaS benchmark)
-- **LLM costs:** Claude 3.5 Haiku
-- **No X API** (optional add-on)
+- **Price:** $9/user/month (Plus tier)
+- **Target margin:** 70%+ (acceptable for lower price point)
+- **LLM costs:** Claude 3.5 Haiku (INCLUDED in variable cost)
+- **No X API** (requires separate paid add-on)
 
-### Margin by Scale
+### Margin by Scale (Plus Tier at $9/month)
 
-| Users | Revenue/mo | Fixed Costs | Variable Costs | Total Costs | Profit | Margin |
-|-------|------------|-------------|----------------|-------------|--------|--------|
-| 5 | $195 | $1 | $0.27 | $1.27 | $193.73 | **99.3%** |
-| 50 | $1,950 | $66 | $2.70 | $68.70 | $1,881.30 | **96.5%** |
-| 500 | $19,500 | $66 | $27 | $93 | $19,407 | **99.5%** |
-| 5,000 | $195,000 | $66 | $270 | $336 | $194,664 | **99.8%** |
+| Users | Revenue/mo | Fixed Costs | Variable Costs (incl. LLM) | Total Costs | Profit | Margin |
+|-------|------------|-------------|---------------------------|-------------|--------|--------|
+| 5 | $45 | $1 | $0.27 | $1.27 | $43.73 | **97.2%** |
+| 50 | $450 | $66 | $2.70 | $68.70 | $381.30 | **84.7%** |
+| 500 | $4,500 | $66 | $27 | $93 | $4,407 | **98.0%** |
+| 5,000 | $45,000 | $66 | $270 | $336 | $44,664 | **99.3%** |
 
-**Conclusion:** Excellent unit economics. Variable costs are negligible (~$0.054/user), gross margin stays >96% at all scales.
+**Conclusion:** Strong unit economics at lower price point. Variable costs (including LLM) are $0.054/user. Margin improves with scale from 85% → 99%.
 
 ### Break-Even Analysis
 
-**At $39/month:**
-- Break-even (cover fixed costs): 2 users (pilot), 2 users (growth)
-- **Very low risk**
+**At $9/month (Plus tier):**
+- **Free tier (0-50 users):** Break-even at 1 user ($9 > $1 fixed costs)
+- **Pro tier (50+ users):** Break-even at 8 users ($72 revenue > $66 fixed costs)
+- **Low risk:** Need only 8 paying users to cover all platform costs
 
-**At $19/month** (lower tier):
-- Break-even: 4 users (pilot), 4 users (growth)
-- Margin at 500 users: 99.5%
-- **Still excellent**
+**Annual pricing ($79/year):**
+- Effective $6.58/month
+- 10 annual subscribers = $790/year = $65.83/month (covers Pro tier costs)
+- **Incentive:** 2 free months for annual commitment
 
 ### Cost Scaling Analysis
 
@@ -564,4 +590,36 @@ All pricing verified as of November 22, 2026:
 
 ---
 
-**Summary:** Bureau has exceptional unit economics. Variable costs are ~5.4¢ per user per month. At $39/month pricing, gross margin is >96% at all scales. Main risks are YouTube API quotas and database performance at 1K+ users, both manageable.
+## Cost-Per-Output Focus (New Priority)
+
+**Lead wedge:** Cost-per-output P&L for AI-made content
+
+### Cost Ledger Architecture
+
+**Per-output tracking:**
+- Each output (episode, video, Short) gets own cost record
+- Generation costs: ElevenLabs characters, Higgsfield credits, failed renders
+- Linked to views, subscribers, revenue
+- Trust badges: Verified (API), Declared (manual), Estimated (formula)
+
+**Example: YouTube Shorts for Ember stream**
+- Ep12 Short: $30.93 cost → 49 views = $0.63/view
+- "Too Many Trees": TBD cost → 34 views = TBD/view
+- **Key metric:** Cost per 1K views, cost per subscriber
+
+**Data sources:**
+- ✅ ElevenLabs API (read usage, map to outputs)
+- ✅ Higgsfield API (read credits, map to outputs)
+- ✅ YouTube OAuth (views, watch time, revenue if monetized)
+- ✅ Manual CSV import (for missing data)
+
+**UI:**
+- Cost-per-piece on stream detail
+- Top Floor shows: "212 views, $61.86 cost = $0.29/view" (Ember)
+- Failed renders tracked but not shown to public
+
+This is the FREE tier value prop: manual cost ledger with CSV import.
+
+---
+
+**Summary:** Bureau has strong unit economics at $9/month. Variable costs (including LLM) are ~5.4¢ per user per month. Gross margin is 85-99% depending on scale. Main risks are YouTube API quotas and database performance at 1K+ users, both manageable. Free tier (2 streams, manual cost ledger) drives lead generation; Plus tier ($9/mo) monetizes with API automation.

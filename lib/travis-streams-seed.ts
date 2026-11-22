@@ -3,6 +3,8 @@
  * User #1: Someone with many streams, checks in briefly from day job
  */
 
+import { StreamAuditTrail, StreamShareSettings, DEFAULT_SHARE_SETTINGS } from './audit-types';
+
 export type StreamType = 'day-job' | 'contract' | 'project';
 
 export interface IncomeStream {
@@ -21,7 +23,7 @@ export interface IncomeStream {
   signal?: 'push' | 'keep' | 'pause' | 'kill';
   signalReason?: string;
   
-  // Financial metrics (all types)
+  // Financial metrics (all types) - current snapshot
   monthlyIncome?: number;
   monthlyCosts?: number;
   monthlyHours?: number;
@@ -38,6 +40,12 @@ export interface IncomeStream {
   // Data freshness
   dataSource?: string;
   dataAsOf?: string;
+  
+  // Auditable record - append-only trail for public/investor views
+  auditTrail?: StreamAuditTrail;
+  
+  // Share settings - what data is visible publicly/to investors
+  shareSettings?: StreamShareSettings;
 }
 
 export const travisStreams: IncomeStream[] = [

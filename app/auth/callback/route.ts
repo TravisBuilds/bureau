@@ -72,39 +72,43 @@ export async function GET(request: NextRequest) {
       // Note: DO NOT insert into auth.users - Supabase Auth owns that table
       // Bureau only creates workspace/membership records
 
-      // Check if user has a workspace
-      const workspaces = await query<{ id: string }>(
-        `SELECT w.id FROM bureau.workspaces w
-         JOIN bureau.workspace_members wm ON wm.workspace_id = w.id
-         WHERE wm.user_id = $1::uuid`,
-        [userId]
-      );
-
-      if (workspaces.length === 0) {
-        // Create workspace for new user
-        const workspaceName = `${email.split('@')[0]}'s Workspace`;
-
-        const newWorkspace = await query<{ id: string }>(
-          'INSERT INTO bureau.workspaces (name, created_by) VALUES ($1, $2::uuid) RETURNING id',
-          [workspaceName, userId]
+      // Use withUser to set JWT claims for RLS
+      const { withUser } = await import('@/lib/db');
+      
+      const workspaceId = await withUser(userId, email, async (client) => {
+        // Check if user has a workspace
+        const workspaces = await client.query(
+          `SELECT w.id FROM bureau.workspaces w
+           JOIN bureau.workspace_members wm ON wm.workspace_id = w.id
+           WHERE wm.user_id = $1::uuid`,
+          [userId]
         );
 
-        const workspaceId = newWorkspace[0].id;
+        if (workspaces.rows.length === 0) {
+          // Create workspace using SECURITY DEFINER function
+          const workspaceName = `${email.split('@')[0]}'s Workspace`;
+          const result = await client.query(
+            'SELECT bureau.bootstrap_workspace($1) as workspace_id',
+            [workspaceName]
+          );
+          return result.rows[0].workspace_id;
+        }
 
-        // Add user as owner
-        await execute(
-          `INSERT INTO bureau.workspace_members (workspace_id, user_id, role, joined_at)
-           VALUES ($1::uuid, $2::uuid, 'owner', NOW())`,
-          [workspaceId, userId]
-        );
+        return workspaces.rows[0].id;
+      });
 
-        // Track onboarding
-        await execute(
-          'INSERT INTO bureau.onboarding_progress (workspace_id, signup_completed_at) VALUES ($1::uuid, NOW())',
+      // Check if this was a new workspace (redirect to onboarding)
+      const isNew = await withUser(userId, email, async (client) => {
+        const result = await client.query(
+          `SELECT signup_completed_at FROM bureau.onboarding_progress 
+           WHERE workspace_id = $1 
+           AND signup_completed_at > NOW() - INTERVAL '1 minute'`,
           [workspaceId]
         );
+        return result.rows.length > 0;
+      });
 
-        // Redirect to onboarding
+      if (isNew) {
         return NextResponse.redirect(new URL('/onboarding', request.url));
       }
 

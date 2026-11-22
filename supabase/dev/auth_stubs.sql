@@ -21,12 +21,18 @@ CREATE TABLE IF NOT EXISTS auth.sessions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Current user context (set via SET LOCAL)
+-- Current user context (reads from JWT claims setting, same as production)
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS UUID
 LANGUAGE sql STABLE
 AS $$
-  SELECT NULLIF(current_setting('request.jwt.claim.sub', TRUE), '')::UUID;
+  SELECT NULLIF(
+    COALESCE(
+      current_setting('request.jwt.claim.sub', TRUE),
+      (current_setting('request.jwt.claims', TRUE)::jsonb->>'sub')
+    ),
+    ''
+  )::UUID;
 $$;
 
 -- Helper function to set current user for testing

@@ -112,3 +112,42 @@ export async function queryWithUser<T = any>(userId: string, text: string, param
     client.release();
   }
 }
+
+/**
+ * Run queries in a transaction with proper JWT claims set (works in production RLS)
+ * Sets transaction-local request.jwt.claims for auth.uid() to work
+ * Safe on both Session Mode and Transaction Pooler
+ */
+export async function withUser<T>(
+  userId: string,
+  email: string,
+  fn: (client: any) => Promise<T>
+): Promise<T> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Set JWT claims for auth.uid() - transaction-local (safe on pooler)
+    const claims = JSON.stringify({
+      sub: userId,
+      email: email,
+      role: 'authenticated',
+      aud: 'authenticated'
+    });
+    
+    await client.query('SELECT set_config($1, $2, true)', ['request.jwt.claims', claims]);
+    await client.query('SELECT set_config($1, $2, true)', ['request.jwt.claim.sub', userId]);
+    
+    // Run the user's function
+    const result = await fn(client);
+    
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

@@ -42,15 +42,14 @@ export async function POST(request: NextRequest) {
     
     const token = authHeader.substring(7); // Remove "Bearer "
     
-    // Look up token in database
+    // Look up token using SECURITY DEFINER function (bypasses RLS)
     const tokenRows = await query<{
-      id: string;
       workspace_id: string;
-      name: string;
+      user_id: string;
+      token_id: string;
     }>(
-      `SELECT id, workspace_id, name
-       FROM ingest_tokens 
-       WHERE token = $1 AND revoked_at IS NULL`,
+      `SELECT workspace_id, user_id, token_id
+       FROM bureau.resolve_ingest_token($1)`,
       [token]
     );
     
@@ -62,11 +61,19 @@ export async function POST(request: NextRequest) {
     
     const tokenInfo = tokenRows[0];
     
-    // Update last_used_at
-    await execute(
-      'UPDATE ingest_tokens SET last_used_at = NOW() WHERE id = $1',
-      [tokenInfo.id]
+    // Get user email for withUser (need to look up in auth.users)
+    const userRows = await query<{ email: string }>(
+      'SELECT email FROM auth.users WHERE id = $1::uuid',
+      [tokenInfo.user_id]
     );
+    
+    if (userRows.length === 0) {
+      return NextResponse.json({ 
+        error: 'Token owner not found' 
+      }, { status: 500 });
+    }
+    
+    const userEmail = userRows[0].email;
     
     // 2. Parse payload
     const payload: IngestPayload = await request.json();
@@ -77,61 +84,66 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // 3. Determine stream
-    let streamId: string | null = null;
+    // 3. Run queries with proper user context
+    const { withUser } = await import('@/lib/db');
     
-    if (!streamId && payload.stream) {
-      // Look up stream by name (case-insensitive)
-      const streamRows = await query<{ id: string }>(
-        `SELECT id FROM streams 
-         WHERE workspace_id = $1 
-         AND name ILIKE $2`,
-        [tokenInfo.workspace_id, payload.stream]
-      );
+    const { streamId, ingestLogId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
+      // Look up stream by name or ID
+      let streamId: string | null = null;
       
-      if (streamRows.length > 0) {
-        streamId = streamRows[0].id;
-      } else {
-        // Try as UUID if name lookup failed
-        try {
-          const uuidStreamRows = await query<{ id: string }>(
-            `SELECT id FROM streams 
-             WHERE workspace_id = $1 
-             AND id = $2::uuid`,
-            [tokenInfo.workspace_id, payload.stream]
-          );
-          if (uuidStreamRows.length > 0) {
-            streamId = uuidStreamRows[0].id;
+      if (payload.stream) {
+        // Try by name (case-insensitive)
+        const streamRows = await client.query(
+          `SELECT id FROM bureau.streams 
+           WHERE workspace_id = $1 
+           AND name ILIKE $2`,
+          [tokenInfo.workspace_id, payload.stream]
+        );
+        
+        if (streamRows.rows.length > 0) {
+          streamId = streamRows.rows[0].id;
+        } else {
+          // Try as UUID if name lookup failed
+          try {
+            const uuidStreamRows = await client.query(
+              `SELECT id FROM bureau.streams 
+               WHERE workspace_id = $1 
+               AND id = $2::uuid`,
+              [tokenInfo.workspace_id, payload.stream]
+            );
+            if (uuidStreamRows.rows.length > 0) {
+              streamId = uuidStreamRows.rows[0].id;
+            }
+          } catch (err) {
+            // Not a valid UUID, ignore
           }
-        } catch (err) {
-          // Not a valid UUID, ignore
         }
       }
-    }
-    
-    // 4. Log ingest
-    const fullPayload = {
-      type: payload.type,
-      stream: payload.stream,
-      stream_id: streamId,
-      content: payload.content,
-      metadata: payload.metadata || {},
-      received_at: new Date().toISOString()
-    };
-    
-    const logRows = await query<{ id: string }>(
-      `INSERT INTO ingest_log (
-        workspace_id, token_id, payload, status
-      ) VALUES ($1, $2, $3, 'pending')
-      RETURNING id`,
-      [
-        tokenInfo.workspace_id,
-        tokenInfo.id,
-        JSON.stringify(fullPayload)
-      ]
-    );
-    
-    const ingestLogId = logRows[0].id;
+      
+      // Log ingest using SECURITY DEFINER function
+      const fullPayload = {
+        type: payload.type,
+        stream: payload.stream,
+        stream_id: streamId,
+        content: payload.content,
+        metadata: payload.metadata || {},
+        received_at: new Date().toISOString()
+      };
+      
+      const logRows = await client.query(
+        `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::jsonb) as id`,
+        [
+          tokenInfo.workspace_id,
+          tokenInfo.token_id,
+          JSON.stringify(fullPayload)
+        ]
+      );
+      
+      return {
+        streamId,
+        ingestLogId: logRows.rows[0].id
+      };
+    });
     
     // 5. For now, all ingests are logged as pending for manual review
     // Future: auto-process cost entries

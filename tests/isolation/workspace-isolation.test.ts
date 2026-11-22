@@ -97,64 +97,74 @@ describe('Workspace Isolation', () => {
   
   describe('RLS Policies', () => {
     test('User A can read their own streams', async () => {
-      // Set auth context to User A
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      // Set auth context to User A using JWT claims (production method)
+      const { withUser } = await import('../../lib/db');
       
-      // User A should see their stream
-      const streams = await query<{ id: string }>(
-        `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
-        [userA.workspaceId]
-      );
+      const streams = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const result = await client.query(
+          `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
+          [userA.workspaceId]
+        );
+        return result.rows;
+      });
       
       expect(streams.length).toBe(1);
       expect(streams[0].id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
     });
     
     test('User A cannot read User B streams via RLS', async () => {
-      // Set auth context to User A
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
-      // User A should NOT see User B's stream
-      const streams = await query<{ id: string }>(
-        `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
-        [userB.workspaceId]
-      );
+      const streams = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const result = await client.query(
+          `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
+          [userB.workspaceId]
+        );
+        return result.rows;
+      });
       
       expect(streams.length).toBe(0);
     });
     
     test('User B cannot read User A streams via RLS', async () => {
-      // Set auth context to User B
-      await execute(`SELECT auth.set_user($1::uuid)`, [userB.id]);
+      const { withUser } = await import('../../lib/db');
       
-      // User B should NOT see User A's stream
-      const streams = await query<{ id: string }>(
-        `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
-        [userA.workspaceId]
-      );
+      const streams = await withUser(userB.id, 'user-b@test.com', async (client) => {
+        const result = await client.query(
+          `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
+          [userA.workspaceId]
+        );
+        return result.rows;
+      });
       
       expect(streams.length).toBe(0);
     });
     
     test('User A can read their own ingest tokens', async () => {
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
-      const tokens = await query<{ token: string }>(
-        `SELECT token FROM bureau.ingest_tokens WHERE workspace_id = $1`,
-        [userA.workspaceId]
-      );
+      const tokens = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const result = await client.query(
+          `SELECT token FROM bureau.ingest_tokens WHERE workspace_id = $1`,
+          [userA.workspaceId]
+        );
+        return result.rows;
+      });
       
       expect(tokens.length).toBe(1);
       expect(tokens[0].token).toBe('bureau_test_a');
     });
     
     test('User A cannot read User B ingest tokens', async () => {
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
-      const tokens = await query<{ token: string }>(
-        `SELECT token FROM bureau.ingest_tokens WHERE workspace_id = $1`,
-        [userB.workspaceId]
-      );
+      const tokens = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const result = await client.query(
+          `SELECT token FROM bureau.ingest_tokens WHERE workspace_id = $1`,
+          [userB.workspaceId]
+        );
+        return result.rows;
+      });
       
       expect(tokens.length).toBe(0);
     });
@@ -183,13 +193,14 @@ describe('Workspace Isolation', () => {
     });
     
     test('API tokens list only shows own workspace tokens', async () => {
-      // This would need to be tested with proper session management
-      // For now, we verify via direct DB query with RLS
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
-      const tokens = await query<{ workspace_id: string }>(
-        `SELECT workspace_id FROM bureau.ingest_tokens`
-      );
+      const tokens = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const result = await client.query(
+          `SELECT workspace_id FROM bureau.ingest_tokens`
+        );
+        return result.rows;
+      });
       
       // User A should only see tokens from their workspace
       tokens.forEach(token => {
@@ -200,15 +211,17 @@ describe('Workspace Isolation', () => {
   
   describe('Cross-Workspace Protection', () => {
     test('Cannot create stream in another workspace', async () => {
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
       try {
-        // Try to insert stream into User B's workspace as User A
-        await execute(
-          `INSERT INTO bureau.streams (workspace_id, name, category, description) 
-           VALUES ($1, 'Malicious Stream', 'production', 'Should fail')`,
-          [userB.workspaceId]
-        );
+        await withUser(userA.id, 'user-a@test.com', async (client) => {
+          // Try to insert stream into User B's workspace as User A
+          await client.query(
+            `INSERT INTO bureau.streams (workspace_id, name, category, description) 
+             VALUES ($1, 'Malicious Stream', 'production', 'Should fail')`,
+            [userB.workspaceId]
+          );
+        });
         
         // Should not reach here
         expect(true).toBe(false);
@@ -219,22 +232,28 @@ describe('Workspace Isolation', () => {
     });
     
     test('Cannot update another workspace stream', async () => {
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
-      const result = await query<{ id: string }>(
-        `UPDATE bureau.streams SET name = 'Hacked' WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
-      );
+      const result = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const res = await client.query(
+          `UPDATE bureau.streams SET name = 'Hacked' WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
+        );
+        return res.rows;
+      });
       
       // Should return 0 rows (RLS blocks update)
       expect(result.length).toBe(0);
     });
     
     test('Cannot delete another workspace stream', async () => {
-      await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
+      const { withUser } = await import('../../lib/db');
       
-      const result = await query<{ id: string }>(
-        `DELETE FROM bureau.streams WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
-      );
+      const result = await withUser(userA.id, 'user-a@test.com', async (client) => {
+        const res = await client.query(
+          `DELETE FROM bureau.streams WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
+        );
+        return res.rows;
+      });
       
       // Should return 0 rows (RLS blocks delete)
       expect(result.length).toBe(0);

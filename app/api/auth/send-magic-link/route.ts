@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
           }, { status: 400 });
         }
       }
+      
+      // Note: Actual claiming happens after Supabase creates the user
+      // See callback route for bureau.claim_pilot_invite() call
     }
     
     // Build redirect URL from request origin or env vars

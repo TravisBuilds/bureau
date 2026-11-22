@@ -1,27 +1,28 @@
 # Bureau
 
-**Decision intelligence for solo founders running AI agent businesses.**
+**Command center for founders with day jobs running AI agent businesses.**
 
-Bureau is a command center that tells founders at a glance whether they have a real business — from "not yet" to "yes, quit your day job." It doesn't use LLMs or chat; the product itself makes deterministic, testable decisions based on your business metrics.
+Bureau is where your project agents (Grok Bot, ChatGPT, etc.) report to, and you get ranked decisions on what to do next. Connect multiple agents per project, see their takes side-by-side, and let Bureau's deterministic engine be the tiebreaker. The product itself makes decisions—not humans, not chat.
 
 ## What is Bureau?
 
-Bureau answers the core question every solo founder asks: **"Is this a real business?"**
+Bureau is your **portfolio command center** for managing multiple side projects while working a day job.
 
-It evaluates:
-- Agent task costs (how much your AI agents cost to run)
-- User metrics and engagement
-- Revenue and contribution margins
-- Break-even math
-- Cost scaling with users
+**How it works:**
+1. Connect your project agents (Grok Bot, ChatGPT, etc.) to Bureau
+2. Each agent reports project status (users, costs, blockers, pending work)
+3. Bureau derives 1-3 decisions only you can make, ranked by priority
+4. Connect multiple agents per project to get different "takes" on each decision
+5. Bureau's deterministic engine breaks ties when agents disagree
 
-And outputs:
-- **A verdict** (`quit_your_day_job`, `keep_going`, `not_yet`, `not_enough_evidence`, or `stop`)
-- **Pricing recommendations** (set price vs free with cost cap)
-- **Open-to-users decision** (should you open to more users or keep it closed?)
-- **Agent action briefs** (what your agents should do next)
+**What Bureau tells you:**
+- **Ranked "What to do next"** across all projects (with time estimates)
+- **Agent takes side-by-side** (where they agree/disagree)
+- **Bureau's verdict** as tiebreaker (deterministic, inspectable)
+- **Founder-time budget** vs asks (weekly hours available vs needed)
+- **Per-project signals** (keep / pause / kill / push with reasoning)
 
-**Key principle:** The product (code) makes decisions, not humans or chat agents. Bureau IS the brain.
+**Key principle:** The product (code) makes decisions. Agents report and advise. Bureau decides.
 
 ## Quick Start
 
@@ -185,6 +186,86 @@ The app is seeded with real data from Plum List:
 - 10 hours/week founder time
 
 **Bureau's verdict:** "Not enough evidence" with free tier + $50/month cost cap recommendation.
+
+## Multi-Agent Support
+
+### Connect Multiple Agents Per Project
+
+Bureau supports multiple agents (Grok Bot, ChatGPT, Claude, etc.) reporting on the same project:
+
+- Each agent submits its own status report
+- Each agent provides its "take" on Bureau's decisions (approve / reject / modify / defer)
+- Bureau shows takes side-by-side with agreement level (unanimous / majority / split)
+- Bureau's deterministic engine breaks ties
+
+### Agent Takes
+
+When Bureau derives a decision (e.g. "Approve return-tracking fix"), connected agents can submit their takes:
+
+```json
+{
+  "recommendation": "approve" | "reject" | "modify" | "defer",
+  "reasoning": "Why I recommend this...",
+  "confidence": "high" | "medium" | "low",
+  "modifications": "If 'modify', what changes..."
+}
+```
+
+### Bureau as Tiebreaker
+
+When agents disagree, Bureau breaks ties using deterministic logic:
+- Priority 1 + blocks a metric → Approve
+- Low founder time cost (< 10 min) → Approve
+- Split decision + no clear winner → Flag for review
+
+Bureau's verdict always includes its reasoning and whether it broke a tie.
+
+### Chat Adapter Interface (Prototype)
+
+**Current implementation:** Manual copy/paste bridge
+- Founder copies prompt from Bureau
+- Pastes into Grok Bot or ChatGPT
+- Copies agent's reply back to Bureau
+
+**Production interface (plug in later):**
+
+```typescript
+interface ChatAdapter {
+  provider: 'grok-bot' | 'chatgpt' | 'claude' | 'gemini';
+  sendMessage(message: string, context?: string): Promise<string>;
+  fetchTake(decisionContext: string): Promise<AgentTake>;
+}
+```
+
+**To add a real provider:**
+1. Implement `ChatAdapter` interface (see `lib/agent-connection-types.ts`)
+2. Add API key/credentials via environment variables
+3. Replace `MockChatAdapter` with your implementation
+
+Example:
+```typescript
+class OpenAIChatAdapter implements ChatAdapter {
+  provider = 'chatgpt';
+  
+  async sendMessage(message: string): Promise<string> {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: message }],
+      }),
+    });
+    const data = await response.json();
+    return data.choices[0].message.content;
+  }
+  
+  // ... implement fetchTake
+}
+```
 
 ## Development
 

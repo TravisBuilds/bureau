@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatFullDateTime } from '@/lib/timezone-utils';
 
 interface Token {
   id: string;
@@ -15,6 +16,7 @@ export default function ConnectAgentPage() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [justCreatedToken, setJustCreatedToken] = useState<string | null>(null);
   
   useEffect(() => {
     loadTokens();
@@ -42,7 +44,10 @@ export default function ConnectAgentPage() {
       });
       const data = await res.json();
       if (data.success) {
+        setJustCreatedToken(data.token); // Show full token only once
         await loadTokens();
+        // Clear after 30 seconds
+        setTimeout(() => setJustCreatedToken(null), 30000);
       }
     } catch (err) {
       console.error('Failed to create token:', err);
@@ -88,20 +93,27 @@ export default function ConnectAgentPage() {
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-sm font-medium text-slate-700">Your Token</label>
                   <button
-                    onClick={() => navigator.clipboard.writeText(latestToken.token)}
+                    onClick={() => navigator.clipboard.writeText(justCreatedToken || latestToken.token)}
                     className="text-sm text-purple-600 hover:text-purple-700"
                   >
                     Copy
                   </button>
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg font-mono text-sm break-all">
-                  {latestToken.token}
+                  {justCreatedToken ? (
+                    <div>
+                      <div className="mb-2 text-green-600 text-xs font-normal">✓ Token created! Copy now - it won't be shown again.</div>
+                      {justCreatedToken}
+                    </div>
+                  ) : (
+                    `bureau_••••${latestToken.token.slice(-4)}`
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  Created: {new Date(latestToken.created_at).toLocaleString()}
+                  Created: {formatFullDateTime(latestToken.created_at)}
                   {latestToken.last_used_at && (
                     <span className="ml-4">
-                      Last used: {new Date(latestToken.last_used_at).toLocaleString()}
+                      Last used: {formatFullDateTime(latestToken.last_used_at)}
                     </span>
                   )}
                 </p>
@@ -165,11 +177,11 @@ export default function ConnectAgentPage() {
                       <tr key={token.id} className="border-b border-slate-100">
                         <td className="py-3 px-4 font-medium">{token.name}</td>
                         <td className="py-3 px-4 text-sm text-slate-600">
-                          {new Date(token.created_at).toLocaleDateString()}
+                          {formatFullDateTime(token.created_at)}
                         </td>
                         <td className="py-3 px-4 text-sm text-slate-600">
                           {token.last_used_at 
-                            ? new Date(token.last_used_at).toLocaleDateString()
+                            ? formatFullDateTime(token.last_used_at)
                             : 'Never'
                           }
                         </td>

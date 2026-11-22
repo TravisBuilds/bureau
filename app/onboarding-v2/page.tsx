@@ -42,12 +42,12 @@ export default function OnboardingV2Page() {
   };
 
   const handleSourceSelected = () => {
-    // Simulate loading attempts
+    // Simulate loading attempts (using REAL Ember Ep12 data: $30.93 total)
     if (source === 'manual') {
       setAttempts([
         { id: '1', description: 'Video generation (Higgsfield)', costUsd: 25.50, hfCredits: 3842.5, failed: false },
-        { id: '2', description: 'Voice generation (ElevenLabs)', costUsd: 11.08, elChars: 3695, failed: false },
-        { id: '3', description: 'Failed render #1', costUsd: 3.50, hfCredits: 500, failed: true },
+        { id: '2', description: 'Voice generation (ElevenLabs)', costUsd: 5.43, elChars: 1812, failed: false },
+        { id: '3', description: 'Failed render #1', costUsd: 0, hfCredits: 0, failed: true },
       ]);
     }
     setStep('assign');

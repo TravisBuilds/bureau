@@ -28,6 +28,8 @@ export async function GET(
       created_at: Date;
       published_at: Date | null;
       last_synced_at: Date | null;
+      lifecycle: 'draft' | 'finished' | 'published' | 'abandoned' | null;
+      cost_coverage_note: string | null;
     }>(
       `SELECT 
         output_id, output_name, output_type,
@@ -36,7 +38,8 @@ export async function GET(
         higgsfield_credits, higgsfield_cost_usd,
         views, watch_time_seconds, subscribers_gained, revenue_usd,
         trust_level, verified_sources,
-        created_at, published_at, last_synced_at
+        created_at, published_at, last_synced_at,
+        lifecycle, cost_coverage_note
        FROM output_costs
        WHERE stream_id = $1
        ORDER BY created_at DESC`,

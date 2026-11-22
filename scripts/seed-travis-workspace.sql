@@ -59,7 +59,8 @@ BEGIN
     generation_cost_usd, failed_renders_cost_usd,
     elevenlabs_characters, elevenlabs_cost_usd,
     views, trust_level, verified_sources,
-    created_at, published_at
+    created_at, published_at,
+    lifecycle, cost_coverage_note
   ) VALUES
   (
     v_ember_stream_id,
@@ -74,7 +75,9 @@ BEGIN
     'verified',
     ARRAY['production-ledger', 'youtube-api'],
     '2026-11-15'::timestamptz,
-    '2026-11-15'::timestamptz
+    '2026-11-15'::timestamptz,
+    'published',
+    'Direct Higgsfield costs only, no failed attempts'
   ),
   (
     v_ember_stream_id,
@@ -89,7 +92,9 @@ BEGIN
     'verified',
     ARRAY['production-ledger', 'youtube-api'],
     '2026-11-18'::timestamptz,
-    '2026-11-18'::timestamptz
+    '2026-11-18'::timestamptz,
+    'published',
+    'Direct Higgsfield costs only, no failed attempts'
   );
   
   RAISE NOTICE 'Added Ember costs: Ep11 $30.63 (15 views), Ep12 $30.93 (49 views)';
@@ -115,7 +120,8 @@ BEGIN
     generation_cost_usd, failed_renders_cost_usd,
     higgsfield_credits, elevenlabs_characters, elevenlabs_cost_usd,
     views, trust_level, verified_sources,
-    created_at
+    created_at,
+    lifecycle, cost_coverage_note
   ) VALUES
   (
     v_studio_stream_id,
@@ -130,7 +136,9 @@ BEGIN
     NULL,
     'verified',
     ARRAY['higgsfield-api'],
-    '2026-10-01'::timestamptz
+    '2026-10-01'::timestamptz,
+    'finished',
+    '6,576.5 HF credits (not converted to USD)'
   ),
   (
     v_studio_stream_id,
@@ -145,7 +153,9 @@ BEGIN
     NULL,
     'verified',
     ARRAY['higgsfield-api', 'elevenlabs-api'],
-    '2026-10-15'::timestamptz
+    '2026-10-15'::timestamptz,
+    'finished',
+    '3,842.5 HF credits + 3,696 EL chars (not converted to USD)'
   ),
   (
     v_studio_stream_id,
@@ -160,7 +170,9 @@ BEGIN
     NULL,
     'verified',
     ARRAY['spend-md'],
-    '2026-11-10'::timestamptz
+    '2026-11-10'::timestamptz,
+    'finished',
+    'Direct USD costs from SPEND.md ledger'
   );
   
   RAISE NOTICE 'Added Studio costs: Ep01 (6576.5 HF credits), Ep02 (3842.5 HF + 3695.67 EL chars), Ep05 ($88.04)';

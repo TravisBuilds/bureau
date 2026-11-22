@@ -64,7 +64,13 @@ export default function MetricStreamCard({ stream, onClick }: Props) {
               <div key={def.id}>
                 <div className="text-xs text-slate-500 mb-1">{def.label}</div>
                 {metricValue ? (
-                  <div className="text-lg font-semibold text-slate-900">
+                  <div className={`text-lg font-semibold ${
+                    def.kind === 'growth' && metricValue.value < 0 
+                      ? 'text-red-600' 
+                      : def.id === 'episodes-published' && metricValue.value === 0
+                      ? 'text-amber-600'
+                      : 'text-slate-900'
+                  }`}>
                     {formatMetricValue(metricValue.value, def)}
                   </div>
                 ) : (

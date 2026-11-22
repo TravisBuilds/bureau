@@ -1,16 +1,16 @@
 'use client';
 
-import { Building2, Shield } from 'lucide-react';
-import { TRAVIS_CURRENT_STREAMS, calculateStreamRollup } from '@/lib/stream-metrics-types';
+import { Building2, Shield, AlertCircle } from 'lucide-react';
+import { REAL_STREAMS, calculateRealRollup, ATTENTION_ITEMS } from '@/lib/real-stream-data';
 import { useRouter } from 'next/navigation';
 import MetricStreamCard from '@/components/MetricStreamCard';
 
 export default function TopFloorPage() {
   const router = useRouter();
   
-  // Only show visible streams (the 4 Travis is building)
-  const visibleStreams = TRAVIS_CURRENT_STREAMS.filter(s => s.visible);
-  const rollup = calculateStreamRollup(TRAVIS_CURRENT_STREAMS);
+  // Real streams with actual data
+  const visibleStreams = REAL_STREAMS.filter(s => s.visible);
+  const rollup = calculateRealRollup();
 
   return (
     <div className="min-h-screen bg-white">
@@ -43,25 +43,21 @@ export default function TopFloorPage() {
         <div className="mb-12">
           <h2 className="text-lg font-medium text-slate-900 mb-6">Overview</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="p-4 bg-white border border-slate-200 rounded-lg">
-              <div className="text-sm text-slate-500 mb-1">AI Spend</div>
-              <div className="text-2xl font-semibold text-slate-900">
-                {rollup.totalSpendThisMonth > 0 
-                  ? `$${rollup.totalSpendThisMonth.toLocaleString()}` 
-                  : '—'}
+              <div className="text-sm text-slate-500 mb-1">Monthly Spend</div>
+              <div className="text-2xl font-semibold text-slate-400">
+                Not reconciled
               </div>
-              <div className="text-xs text-slate-400 mt-1">this month</div>
+              <div className="text-xs text-slate-400 mt-1">partial coverage</div>
             </div>
 
             <div className="p-4 bg-white border border-slate-200 rounded-lg">
               <div className="text-sm text-slate-500 mb-1">Income</div>
-              <div className="text-2xl font-semibold text-slate-900">
-                {rollup.totalIncome > 0 
-                  ? `$${rollup.totalIncome.toLocaleString()}` 
-                  : '—'}
+              <div className="text-2xl font-semibold text-slate-400">
+                Not connected
               </div>
-              <div className="text-xs text-slate-400 mt-1">this month</div>
+              <div className="text-xs text-slate-400 mt-1">across all streams</div>
             </div>
 
             <div className="p-4 bg-white border border-slate-200 rounded-lg">
@@ -74,12 +70,50 @@ export default function TopFloorPage() {
 
             <div className="p-4 bg-white border border-slate-200 rounded-lg">
               <div className="text-sm text-slate-500 mb-1">Attention</div>
-              <div className="text-2xl font-semibold text-slate-900">
+              <div className={`text-2xl font-semibold ${rollup.attentionItems > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
                 {rollup.attentionItems}
               </div>
               <div className="text-xs text-slate-400 mt-1">items</div>
             </div>
           </div>
+
+          {/* Attention Items */}
+          {ATTENTION_ITEMS.length > 0 && (
+            <div className="space-y-2">
+              {ATTENTION_ITEMS.map((item) => (
+                <div
+                  key={item.id}
+                  className={`p-4 rounded-lg border ${
+                    item.severity === 'critical' ? 'bg-red-50 border-red-200' :
+                    item.severity === 'warning' ? 'bg-amber-50 border-amber-200' :
+                    'bg-blue-50 border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className={`w-5 h-5 mt-0.5 ${
+                      item.severity === 'critical' ? 'text-red-600' :
+                      item.severity === 'warning' ? 'text-amber-600' :
+                      'text-blue-600'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-900">{item.streamName}</span>
+                        <span className="text-xs text-slate-500">•</span>
+                        <span className={`text-sm font-medium ${
+                          item.severity === 'critical' ? 'text-red-700' :
+                          item.severity === 'warning' ? 'text-amber-700' :
+                          'text-blue-700'
+                        }`}>
+                          {item.title}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">{item.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Stream Cards */}
@@ -91,7 +125,7 @@ export default function TopFloorPage() {
               <MetricStreamCard
                 key={stream.id}
                 stream={stream}
-                onClick={() => router.push(`/stream/${stream.id}`)}
+                onClick={() => router.push(`/stream-detail/${stream.id}`)}
               />
             ))}
           </div>

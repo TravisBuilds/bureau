@@ -73,11 +73,12 @@ model Stream {
   visible     Boolean         @default(true)
   createdAt   DateTime        @default(now()) @map("created_at")
 
-  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  metricValues   MetricValue[]
-  weeklyReviews  WeeklyReview[]
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metricValues    MetricValue[]
+  weeklyReviews   WeeklyReview[]
   automationRules AutomationRule[]
-  usageRecords   UsageRecord[]
+  usageRecords    UsageRecord[]
+  outputCosts     OutputCost[]
 
   @@map("streams")
 }
@@ -333,4 +334,41 @@ model OnboardingProgress {
   timeToFirstFinding Int?     @map("time_to_first_finding") // seconds
 
   @@map("onboarding_progress")
+}
+
+// Cost-per-output P&L tracking
+model OutputCost {
+  id                   String    @id @default(uuid())
+  streamId             String    @map("stream_id")
+  outputId             String    @map("output_id")
+  outputName           String    @map("output_name")
+  outputType           String    @map("output_type")
+  generationCostUsd    Decimal   @map("generation_cost_usd") @db.Decimal(10, 2)
+  failedRendersCostUsd Decimal?  @default(0) @map("failed_renders_cost_usd") @db.Decimal(10, 2)
+  
+  elevenlabsCharacters Int?      @map("elevenlabs_characters")
+  elevenlabsCostUsd    Decimal?  @map("elevenlabs_cost_usd") @db.Decimal(10, 2)
+  higgsfieldCredits    Decimal?  @map("higgsfield_credits") @db.Decimal(10, 2)
+  higgsfieldCostUsd    Decimal?  @map("higgsfield_cost_usd") @db.Decimal(10, 2)
+  otherCosts           Json?     @map("other_costs")
+  
+  views                Int?      @default(0)
+  watchTimeSeconds     Int?      @map("watch_time_seconds")
+  subscribersGained    Int?      @default(0) @map("subscribers_gained")
+  revenueUsd           Decimal?  @default(0) @map("revenue_usd") @db.Decimal(10, 2)
+  
+  trustLevel           String    @map("trust_level")
+  verifiedSources      String[]  @map("verified_sources")
+  
+  createdAt            DateTime  @default(now()) @map("created_at")
+  publishedAt          DateTime? @map("published_at")
+  lastSyncedAt         DateTime? @map("last_synced_at")
+  
+  stream Stream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  
+  @@unique([streamId, outputId])
+  @@index([streamId])
+  @@index([trustLevel])
+  @@index([publishedAt])
+  @@map("output_costs")
 }

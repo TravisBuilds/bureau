@@ -6,10 +6,8 @@
  * Production: Supabase Auth
  */
 
-import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
+import { query, execute } from './db';
 
 export interface AuthUser {
   id: string;
@@ -33,15 +31,18 @@ export class LocalAuthAdapter {
    */
   async sendMagicLink(email: string): Promise<{ success: boolean; magicLink?: string }> {
     // Find or create user
-    let user = await prisma.$queryRaw<Array<{ id: string; email: string }>>`
-      SELECT id, email FROM auth.users WHERE email = ${email}
-    `.then(rows => rows[0]);
+    let users = await query<{ id: string; email: string }>(
+      'SELECT id, email FROM auth.users WHERE email = $1',
+      [email]
+    );
+    let user = users[0];
 
     if (!user) {
       // Create new user
-      const result = await prisma.$queryRaw<Array<{ id: string; email: string }>>`
-        INSERT INTO auth.users (email) VALUES (${email}) RETURNING id, email
-      `;
+      const result = await query<{ id: string; email: string }>(
+        'INSERT INTO auth.users (email) VALUES ($1) RETURNING id, email',
+        [email]
+      );
       user = result[0];
     }
 
@@ -50,10 +51,10 @@ export class LocalAuthAdapter {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
     // Store session
-    await prisma.$executeRaw`
-      INSERT INTO auth.sessions (user_id, token, expires_at)
-      VALUES (${user.id}::uuid, ${token}, ${expiresAt})
-    `;
+    await execute(
+      'INSERT INTO auth.sessions (user_id, token, expires_at) VALUES ($1::uuid, $2, $3)',
+      [user.id, token, expiresAt]
+    );
 
     const magicLink = `http://localhost:3000/auth/verify?token=${token}`;
 
@@ -73,18 +74,18 @@ export class LocalAuthAdapter {
    * Verify magic link token
    */
   async verifyToken(token: string): Promise<AuthSession | null> {
-    const result = await prisma.$queryRaw<Array<{
+    const result = await query<{
       session_id: string;
       user_id: string;
       email: string;
       expires_at: Date;
-    }>>`
-      SELECT s.id as session_id, s.user_id, u.email, s.expires_at
-      FROM auth.sessions s
-      JOIN auth.users u ON u.id = s.user_id
-      WHERE s.token = ${token}
-      AND s.expires_at > NOW()
-    `;
+    }>(
+      `SELECT s.id as session_id, s.user_id, u.email, s.expires_at
+       FROM auth.sessions s
+       JOIN auth.users u ON u.id = s.user_id
+       WHERE s.token = $1 AND s.expires_at > NOW()`,
+      [token]
+    );
 
     if (result.length === 0) {
       return null;
@@ -117,10 +118,10 @@ export class LocalAuthAdapter {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
-    await prisma.$executeRaw`
-      INSERT INTO auth.sessions (user_id, token, expires_at)
-      VALUES (${userId}::uuid, ${token}, ${expiresAt})
-    `;
+    await execute(
+      'INSERT INTO auth.sessions (user_id, token, expires_at) VALUES ($1::uuid, $2, $3)',
+      [userId, token, expiresAt]
+    );
 
     return { token, expiresAt };
   }
@@ -129,16 +130,14 @@ export class LocalAuthAdapter {
    * Delete session (logout)
    */
   async deleteSession(token: string): Promise<void> {
-    await prisma.$executeRaw`
-      DELETE FROM auth.sessions WHERE token = ${token}
-    `;
+    await execute('DELETE FROM auth.sessions WHERE token = $1', [token]);
   }
 
   /**
    * Set auth.uid() for RLS testing
    */
   async setAuthContext(userId: string): Promise<void> {
-    await prisma.$executeRaw`SELECT auth.set_user(${userId}::uuid)`;
+    await execute('SELECT auth.set_user($1::uuid)', [userId]);
   }
 }
 

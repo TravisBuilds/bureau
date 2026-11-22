@@ -81,17 +81,20 @@ export async function POST(request: NextRequest) {
       let streamId: string | null = null;
       
       if (payload.stream) {
+        // Cap stream name length
+        const streamName = payload.stream.substring(0, 100);
+        
         // Check if it's a valid UUID format
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const isUuid = uuidRegex.test(payload.stream);
+        const isUuid = uuidRegex.test(streamName);
         
         if (isUuid) {
-          // Try as UUID first
+          // Try as UUID first (with workspace filter)
           const uuidStreamRows = await client.query(
             `SELECT id FROM bureau.streams 
              WHERE workspace_id = $1 
              AND id = $2::uuid`,
-            [tokenInfo.workspace_id, payload.stream]
+            [tokenInfo.workspace_id, streamName]
           );
           
           if (uuidStreamRows.rows.length > 0) {
@@ -100,23 +103,35 @@ export async function POST(request: NextRequest) {
         }
         
         if (!streamId) {
-          // Try by name (case-insensitive)
+          // Try by name (exact match, case-insensitive, workspace-scoped)
           const streamRows = await client.query(
             `SELECT id FROM bureau.streams 
              WHERE workspace_id = $1 
-             AND name ILIKE $2`,
-            [tokenInfo.workspace_id, payload.stream]
+             AND lower(name) = lower($2)`,
+            [tokenInfo.workspace_id, streamName]
           );
           
           if (streamRows.rows.length > 0) {
             streamId = streamRows.rows[0].id;
           } else {
+            // Check stream count limit (max 50 auto-created streams per workspace)
+            const countRows = await client.query(
+              `SELECT COUNT(*) as count FROM bureau.streams 
+               WHERE workspace_id = $1`,
+              [tokenInfo.workspace_id]
+            );
+            
+            const streamCount = parseInt(countRows.rows[0].count);
+            if (streamCount >= 50) {
+              throw new Error('Stream limit reached (50). Delete unused streams or contact support.');
+            }
+            
             // Auto-create stream by name for new pilots
             const createRows = await client.query(
               `INSERT INTO bureau.streams (workspace_id, name, type, status)
                VALUES ($1, $2, 'agent', 'active')
                RETURNING id`,
-              [tokenInfo.workspace_id, payload.stream]
+              [tokenInfo.workspace_id, streamName]
             );
             streamId = createRows.rows[0].id;
           }

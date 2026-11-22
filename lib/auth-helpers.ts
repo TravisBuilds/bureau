@@ -14,7 +14,8 @@ export interface AuthUser {
 
 /**
  * Get authenticated user from Supabase session and their workspace ID
- * Returns null if not authenticated or no workspace found
+ * Returns null if not authenticated
+ * Returns user with workspaceId=null if no workspace (needs invite)
  */
 export async function getAuthUser(): Promise<AuthUser | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -41,21 +42,36 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     return null;
   }
 
-  // Get user's workspace via SECURITY DEFINER function
-  const workspaces = await query<{ id: string }>(
-    'SELECT * FROM bureau.user_workspaces($1)',
-    [user.id]
-  );
+  // Get user's workspace via SECURITY DEFINER function (bureau_app can execute)
+  try {
+    const workspaces = await query<{ id: string }>(
+      'SELECT * FROM bureau.user_workspaces($1)',
+      [user.id]
+    );
 
-  if (workspaces.length === 0) {
-    return null;
+    // User authenticated but no workspace (signed in without invite)
+    if (workspaces.length === 0) {
+      return {
+        id: user.id,
+        email: user.email,
+        workspaceId: '', // Empty string indicates no workspace
+      };
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      workspaceId: workspaces[0].id,
+    };
+  } catch (error) {
+    console.error('Error fetching user workspace:', error);
+    // Return user without workspace on DB error
+    return {
+      id: user.id,
+      email: user.email,
+      workspaceId: '',
+    };
   }
-
-  return {
-    id: user.id,
-    email: user.email,
-    workspaceId: workspaces[0].id,
-  };
 }
 
 /**

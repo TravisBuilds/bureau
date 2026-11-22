@@ -52,21 +52,26 @@ export default function OnboardingContent({ userEmail }: OnboardingContentProps)
     }
   };
 
-  const connectSnippet = `# Install Bureau client
-npm install @bureau/client
+  const siteUrl = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : 'https://bureau-krustbuild.vercel.app';
 
-# In your agent code:
-import { Bureau } from '@bureau/client';
+  const connectSnippet = `# Send ingest data to Bureau
+curl -X POST ${siteUrl}/api/ingest \\
+  -H "Authorization: Bearer ${ingestToken}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "type": "intake",
+    "stream": "${firstStream || 'your-stream'}",
+    "content": "Generated content, cost $1.23",
+    "metadata": {
+      "cost_usd": 1.23,
+      "model": "gpt-4o",
+      "tokens": 1500
+    }
+  }'
 
-const bureau = new Bureau('${ingestToken}');
-
-// Log inputs, outputs, costs
-await bureau.log({
-  input: 'User question',
-  output: 'Agent response',
-  model: 'gpt-4o',
-  cost: 0.0032
-});`;
+# See full docs: ${siteUrl}/BUREAU.md`;
 
   const copyToClipboard = (text: string, type: 'token' | 'snippet') => {
     navigator.clipboard.writeText(text);

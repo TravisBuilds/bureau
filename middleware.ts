@@ -2,23 +2,22 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean);
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
+  .split(',')
+  .map(email => email.trim().toLowerCase())
+  .filter(Boolean);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths (no auth required)
-  const publicPaths = [
-    '/',
-    '/auth/signin',
-    '/auth/signup',
-    '/auth/callback',
-    '/auth/verify',
-    '/api/ingest', // Token-based auth
-  ];
+  // Exact match for root, prefix match for auth and ingest
+  const isPublic = 
+    pathname === '/' ||
+    pathname.startsWith('/auth/') ||
+    pathname.startsWith('/api/ingest');
 
-  // Check if path is public
-  if (publicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))) {
+  if (isPublic) {
     return NextResponse.next();
   }
 
@@ -65,6 +64,14 @@ export async function middleware(request: NextRequest) {
 
   // Require auth for protected paths
   if (!user) {
+    // API routes get 401 JSON, pages get redirect
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     const signInUrl = new URL('/auth/signin', request.url);
     signInUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(signInUrl);
@@ -76,7 +83,8 @@ export async function middleware(request: NextRequest) {
       ? (user as any).email 
       : '';
     
-    if (!ADMIN_EMAILS.length || !ADMIN_EMAILS.includes(userEmail)) {
+    // Default deny if ADMIN_EMAILS not set or user not in list
+    if (!ADMIN_EMAILS.length || !ADMIN_EMAILS.includes(userEmail.toLowerCase().trim())) {
       return NextResponse.redirect(new URL('/top-floor', request.url));
     }
   }

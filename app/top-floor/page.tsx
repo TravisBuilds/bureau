@@ -11,17 +11,33 @@ export default async function TopFloorPage() {
     redirect('/auth/signin');
   }
 
+  // User signed in but has no workspace (no invite claimed)
+  if (!user.workspaceId) {
+    redirect('/auth/signup?error=invite-required');
+  }
+
   // Fetch real workspace data
   const data = await withUser(user.id, user.email, async (client) => {
-    // Get streams
+    // Get streams with per-stream costs and log counts
     const streamsResult = await client.query(
       `SELECT 
         s.id, s.name, s.type, s.status,
-        COUNT(DISTINCT il.id) as log_count,
-        SUM(CASE WHEN il.payload->>'metadata' IS NOT NULL 
-          AND (il.payload->'metadata'->>'cost_usd')::numeric > 0 
-          THEN (il.payload->'metadata'->>'cost_usd')::numeric 
-          ELSE 0 END) as total_cost
+        COUNT(DISTINCT il.id) FILTER (
+          WHERE il.payload->>'stream_id' IS NOT NULL 
+          AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          AND (il.payload->>'stream_id')::uuid = s.id
+        ) as log_count,
+        COALESCE(SUM(
+          CASE 
+            WHEN il.payload->>'stream_id' IS NOT NULL
+            AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            AND (il.payload->>'stream_id')::uuid = s.id
+            AND il.payload->'metadata'->>'cost_usd' IS NOT NULL
+            AND il.payload->'metadata'->>'cost_usd' ~ '^[0-9]+\.?[0-9]*$'
+            THEN (il.payload->'metadata'->>'cost_usd')::numeric
+            ELSE 0
+          END
+        ), 0) as total_cost
        FROM bureau.streams s
        LEFT JOIN bureau.ingest_log il ON il.workspace_id = s.workspace_id
        WHERE s.workspace_id = $1
@@ -36,7 +52,11 @@ export default async function TopFloorPage() {
         il.id, il.payload, il.created_at, il.status,
         s.name as stream_name
        FROM bureau.ingest_log il
-       LEFT JOIN bureau.streams s ON s.id = (il.payload->>'stream_id')::uuid
+       LEFT JOIN bureau.streams s ON (
+         il.payload->>'stream_id' IS NOT NULL
+         AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+         AND s.id = (il.payload->>'stream_id')::uuid
+       )
        WHERE il.workspace_id = $1
        ORDER BY il.created_at DESC
        LIMIT 10`,

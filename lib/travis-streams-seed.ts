@@ -1,5 +1,5 @@
 /**
- * Travis's Real Income Streams
+ * Travis's Real Income Streams (7 total)
  * User #1: Someone with many streams, checks in briefly from day job
  */
 
@@ -117,20 +117,7 @@ export const travisStreams: IncomeStream[] = [
     status: 'not-connected',
   },
   
-  // 7. Test One - NOT CONNECTED
-  {
-    id: 'test-one',
-    name: 'Test One',
-    description: 'Machine-readable product catalog cited by AI shoppers',
-    agents: [
-      { name: 'Chief of Staff', role: 'Catalog Management', connected: false },
-    ],
-    connected: false,
-    lastActivity: 'Never',
-    status: 'not-connected',
-  },
-  
-  // 8. Bureau - NOT CONNECTED
+  // 7. Bureau - NOT CONNECTED
   {
     id: 'bureau',
     name: 'Bureau',

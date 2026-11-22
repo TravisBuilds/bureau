@@ -78,7 +78,7 @@ Bureau and Paperclip serve different users with different philosophies. Papercli
 
 ### 3. Built for Travis (User #1)
 
-**Who:** Solopreneur with 8 income streams, checks Bureau briefly from day job
+**Who:** Solopreneur with 7 income streams, checks Bureau briefly from day job
 
 **His real streams:** `lib/travis-streams-seed.ts`
 
@@ -88,8 +88,7 @@ Bureau and Paperclip serve different users with different philosophies. Papercli
 4. Quacked Concierge Peak Glow Up - resort IP (Studio Peak Glow Up)
 5. Offkey - karaoke app (Offkey PM)
 6. StarringYou - Chrome extension (StarringYou agent)
-7. Test One - product catalog (Chief of Staff)
-8. Bureau - this product (Bureau agent)
+7. Bureau - this product (Bureau agent)
 
 **New Portfolio:** `components/PortfolioPageCompact.tsx`
 
@@ -300,7 +299,7 @@ Updated with:
 ## What Travis Gets
 
 **A portfolio built for him:**
-- 8 real streams (7 not connected yet, 1 with real data)
+- 7 real streams (6 not connected yet, 1 with real data)
 - Brief check-in view: what needs you today
 - Scannable table: signal, needs you, spending, earning
 - Today queue: top 5 items cross-stream

@@ -31,11 +31,11 @@ export default function Home() {
       const initialProjects = [
         plumListStatus,
         {
-          projectName: 'Project 2',
+          projectName: 'Add another project',
           connected: false,
         },
         {
-          projectName: 'Project 3',
+          projectName: 'Add another project',
           connected: false,
         },
       ];

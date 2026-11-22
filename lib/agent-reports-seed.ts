@@ -85,7 +85,7 @@ export const plumListAgentReport: AgentReport = {
   revenue: 0,
   
   openWork: {
-    unpushedCommits: 3, // syncs 26-29 = 3 unpushed
+    unpushedCommits: 4, // syncs 26-29 = 4 syncs unpushed (26, 27, 28, 29)
     openPRs: 2,
   },
   

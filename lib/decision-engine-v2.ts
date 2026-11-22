@@ -74,13 +74,14 @@ function deriveNextActions(report: AgentReport): NextAction[] {
   
   // Check for unpushed work or open PRs
   if (report.openWork.unpushedCommits && report.openWork.unpushedCommits > 0) {
+    const prsText = report.openWork.openPRs ? `, ${report.openWork.openPRs} open PRs` : '';
     actions.push({
       priority: 3,
-      title: `Review: ${report.openWork.unpushedCommits} unpushed commits`,
-      reasoning: 'Work completed but not shared. Risk of losing progress.',
+      title: `Review: ${report.openWork.unpushedCommits} syncs unpushed${prsText}`,
+      reasoning: 'Local work completed but not pushed to GitHub. Risk of losing progress.',
       costOfWaiting: 'Potential merge conflicts, lost work if machine fails',
       founderTimeMinutes: 10,
-      agentTaskBrief: 'Push commits: git push origin main',
+      agentTaskBrief: `Push ${report.openWork.unpushedCommits} syncs to GitHub: git push origin main${report.openWork.openPRs ? `. Review ${report.openWork.openPRs} open PRs.` : ''}`,
       type: 'review',
     });
   }
@@ -93,7 +94,7 @@ function deriveNextActions(report: AgentReport): NextAction[] {
  * Derive one-line verdict
  */
 function deriveVerdict(report: AgentReport): string {
-  const totalUsers = report.userMetrics.nonFounder.total;
+  const totalUsers = report.userMetrics.total; // Use total auth users, not just non-founder
   const hasRevenue = report.revenue > 0;
   const totalCosts = report.costs.reduce((sum, c) => sum + c.amountUSD, 0);
   const hasBlockedMetrics = report.eventTracking.blockers.length > 0;
@@ -138,13 +139,8 @@ function deriveFounderSignal(
     };
   }
   
-  // Pause signals
-  if (hasCriticalBlockers && report.founderTimeUnknown) {
-    return {
-      signal: 'pause',
-      reasoning: 'Blocked on founder decisions but no time allocated. Pause until time is available.',
-    };
-  }
+  // Pause signals - only if founder set a budget and we exceed it
+  // (founderTimeUnknown means they haven't tracked/set a budget, which is optional)
   
   // Push signals (ready to scale)
   if (hasRevenue && report.revenue > totalCosts * 2 && activeUsers > 10) {
@@ -154,13 +150,21 @@ function deriveFounderSignal(
     };
   }
   
+  // Push signals (high priority blockers that need immediate action)
+  if (hasCriticalBlockers && nextActions.length > 0 && nextActions[0].priority === 1) {
+    return {
+      signal: 'push',
+      reasoning: `Critical blocker: ${nextActions[0].blockedMetric || 'key metric'}. Unblock measurement to evaluate next steps.`,
+    };
+  }
+  
   // Keep signals (default for active projects)
   if (totalUsers > 0 && activeUsers > 0) {
     const engagement = activeUsers / totalUsers;
     if (engagement > 0.2) {
       return {
         signal: 'keep',
-        reasoning: `${Math.round(engagement * 100)}% engagement rate. Users are interested. ${hasCriticalBlockers ? 'Unblock metrics to decide next.' : 'Validate pricing.'}`,
+        reasoning: `${Math.round(engagement * 100)}% engagement rate. Users are interested. ${hasCriticalBlockers ? 'Fix tracking to measure retention.' : 'Validate pricing.'}`,
       };
     } else {
       return {

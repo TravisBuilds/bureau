@@ -39,7 +39,7 @@ describe('Bureau Decision Engine v2', () => {
       expect(report.revenue).toBe(0);
       
       // Open work
-      expect(report.openWork.unpushedCommits).toBe(3); // syncs 26-29
+      expect(report.openWork.unpushedCommits).toBe(4); // syncs 26, 27, 28, 29
       expect(report.openWork.openPRs).toBe(2);
       
       // Pending work
@@ -87,11 +87,13 @@ describe('Bureau Decision Engine v2', () => {
       ).toBe(true);
     });
 
-    it('should derive "keep" or "pause" founder signal', () => {
+    it('should derive "push" or "keep" founder signal based on blockers', () => {
       const status = evaluateAgentReport(plumListAgentReport);
       
       expect(status.founderSignal).toBeDefined();
-      expect(['keep', 'pause']).toContain(status.founderSignal!);
+      // With critical blockers, should be PUSH (unblock measurement)
+      // Without budget set, doesn't default to PAUSE
+      expect(['push', 'keep']).toContain(status.founderSignal!);
       expect(status.signalReasoning).toBeDefined();
     });
 
@@ -177,11 +179,12 @@ describe('Bureau Decision Engine v2', () => {
   });
 
   describe('Founder Signal Logic', () => {
-    it('should signal "keep" for active projects with users', () => {
+    it('should signal "push" or "keep" for active projects with users', () => {
       const status = evaluateAgentReport(plumListAgentReport);
       
-      // Plum List has users and activity, so should be keep or pause
-      expect(['keep', 'pause']).toContain(status.founderSignal!);
+      // Plum List has users, activity, and critical blockers
+      // Should be PUSH (to unblock) or KEEP (fix tracking)
+      expect(['push', 'keep']).toContain(status.founderSignal!);
     });
 
     it('should include reasoning for the signal', () => {
@@ -203,11 +206,19 @@ describe('Bureau Decision Engine v2', () => {
       ).toBe(true);
     });
 
-    it('should include user count in verdict', () => {
+    it('should include total user count in verdict', () => {
       const status = evaluateAgentReport(plumListAgentReport);
       
-      // Verdict uses non-founder users (25)
-      expect(status.verdict).toContain('25');
+      // Verdict uses total auth users (26), not just non-founder (25)
+      expect(status.verdict).toContain('26');
+    });
+
+    it('should use 26 total auth users from fixture', () => {
+      const status = evaluateAgentReport(plumListAgentReport);
+      
+      // Real baseline: 26 auth users, 6 with saves
+      expect(plumListAgentReport.userMetrics.total).toBe(26);
+      expect(plumListAgentReport.userMetrics.nonFounder.active).toBe(6);
     });
   });
 });

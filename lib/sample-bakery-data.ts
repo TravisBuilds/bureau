@@ -122,7 +122,7 @@ export function generateSampleBakeryAuditTrail(): StreamAuditTrail {
     streamId,
     entries,
     createdAt: '2026-06-01T00:00:00Z',
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: '2026-11-22T04:00:00Z',
   };
 }
 

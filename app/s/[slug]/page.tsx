@@ -1,16 +1,14 @@
-'use client';
-
-import { use } from 'react';
 import { Building2, TrendingUp, Clock, Users, DollarSign, AlertTriangle } from 'lucide-react';
 import { travisStreams } from '@/lib/travis-streams-seed';
 import { generateSampleBakeryAuditTrail, SAMPLE_BAKERY_PITCH } from '@/lib/sample-bakery-data';
 import { DEFAULT_SHARE_SETTINGS } from '@/lib/audit-types';
 import { getTotalIncome, getTotalCosts, getDecisionHistory } from '@/lib/audit-types';
 
-export const dynamicParams = true;
+export const dynamic = 'force-dynamic';
 
-export default function PublicStreamPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+export default async function PublicStreamPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
+  const { slug } = params;
   
   // Find the stream
   const stream = travisStreams.find(s => s.id === slug);

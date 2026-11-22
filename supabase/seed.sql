@@ -1,12 +1,14 @@
 -- Bureau Seed Data
 -- Travis's workspace with 4 real streams (Nov 21, 2026 data)
 
+SET search_path TO bureau, extensions;
+
 -- Create Travis's workspace
 -- Note: This assumes auth.users has a user with known ID
 -- In practice, this will be created on first login
 
 -- Generate pilot invite codes
-INSERT INTO pilot_invites (code, email, expires_at) VALUES
+INSERT INTO bureau.pilot_invites (code, email, expires_at) VALUES
   ('BUREAU_PILOT_001', 'travis@example.com', NOW() + INTERVAL '90 days'),
   ('BUREAU_PILOT_002', NULL, NOW() + INTERVAL '90 days'),
   ('BUREAU_PILOT_003', NULL, NOW() + INTERVAL '90 days'),

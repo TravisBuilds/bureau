@@ -15,29 +15,29 @@ describe('Workspace Isolation', () => {
   let tokenB: string;
   
   beforeAll(async () => {
-    // Create User A
+    // Create User A (auth.users for local dev)
     const userARows = await query<{ id: string }>(
       `INSERT INTO auth.users (email) VALUES ($1) RETURNING id`,
       ['user-a@test.com']
     );
     const userAId = userARows[0].id;
     
-    // Create Workspace A
+    // Create Workspace A (bureau schema)
     const workspaceARows = await query<{ id: string }>(
-      `INSERT INTO workspaces (name, created_by) VALUES ($1, $2) RETURNING id`,
+      `INSERT INTO bureau.workspaces (name, created_by) VALUES ($1, $2) RETURNING id`,
       ['Workspace A', userAId]
     );
     const workspaceAId = workspaceARows[0].id;
     
     // Add User A to Workspace A
     await execute(
-      `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
+      `INSERT INTO bureau.workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
       [workspaceAId, userAId]
     );
     
     // Create token for Workspace A
     const tokenARows = await query<{ token: string }>(
-      `INSERT INTO ingest_tokens (workspace_id, name, token) 
+      `INSERT INTO bureau.ingest_tokens (workspace_id, name, token) 
        VALUES ($1, 'Token A', 'bureau_test_a') RETURNING token`,
       [workspaceAId]
     );
@@ -52,20 +52,20 @@ describe('Workspace Isolation', () => {
     
     // Create Workspace B
     const workspaceBRows = await query<{ id: string }>(
-      `INSERT INTO workspaces (name, created_by) VALUES ($1, $2) RETURNING id`,
+      `INSERT INTO bureau.workspaces (name, created_by) VALUES ($1, $2) RETURNING id`,
       ['Workspace B', userBId]
     );
     const workspaceBId = workspaceBRows[0].id;
     
     // Add User B to Workspace B
     await execute(
-      `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
+      `INSERT INTO bureau.workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`,
       [workspaceBId, userBId]
     );
     
     // Create token for Workspace B
     const tokenBRows = await query<{ token: string }>(
-      `INSERT INTO ingest_tokens (workspace_id, name, token) 
+      `INSERT INTO bureau.ingest_tokens (workspace_id, name, token) 
        VALUES ($1, 'Token B', 'bureau_test_b') RETURNING token`,
       [workspaceBId]
     );
@@ -73,14 +73,14 @@ describe('Workspace Isolation', () => {
     
     // Create stream for Workspace A
     await execute(
-      `INSERT INTO streams (id, workspace_id, name, category, description) 
+      `INSERT INTO bureau.streams (id, workspace_id, name, category, description) 
        VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', $1, 'Stream A', 'production', 'Test stream A')`,
       [workspaceAId]
     );
     
     // Create stream for Workspace B
     await execute(
-      `INSERT INTO streams (id, workspace_id, name, category, description) 
+      `INSERT INTO bureau.streams (id, workspace_id, name, category, description) 
        VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', $1, 'Stream B', 'production', 'Test stream B')`,
       [workspaceBId]
     );
@@ -90,8 +90,8 @@ describe('Workspace Isolation', () => {
   });
   
   afterAll(async () => {
-    // Cleanup
-    await execute(`DELETE FROM workspaces WHERE created_by IN ($1, $2)`, [userA.id, userB.id]);
+    // Cleanup (cascade will handle related records)
+    await execute(`DELETE FROM bureau.workspaces WHERE created_by IN ($1, $2)`, [userA.id, userB.id]);
     await execute(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [userA.id, userB.id]);
   });
   
@@ -102,7 +102,7 @@ describe('Workspace Isolation', () => {
       
       // User A should see their stream
       const streams = await query<{ id: string }>(
-        `SELECT id FROM streams WHERE workspace_id = $1`,
+        `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
         [userA.workspaceId]
       );
       
@@ -116,7 +116,7 @@ describe('Workspace Isolation', () => {
       
       // User A should NOT see User B's stream
       const streams = await query<{ id: string }>(
-        `SELECT id FROM streams WHERE workspace_id = $1`,
+        `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
         [userB.workspaceId]
       );
       
@@ -129,7 +129,7 @@ describe('Workspace Isolation', () => {
       
       // User B should NOT see User A's stream
       const streams = await query<{ id: string }>(
-        `SELECT id FROM streams WHERE workspace_id = $1`,
+        `SELECT id FROM bureau.streams WHERE workspace_id = $1`,
         [userA.workspaceId]
       );
       
@@ -140,7 +140,7 @@ describe('Workspace Isolation', () => {
       await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
       
       const tokens = await query<{ token: string }>(
-        `SELECT token FROM ingest_tokens WHERE workspace_id = $1`,
+        `SELECT token FROM bureau.ingest_tokens WHERE workspace_id = $1`,
         [userA.workspaceId]
       );
       
@@ -152,7 +152,7 @@ describe('Workspace Isolation', () => {
       await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
       
       const tokens = await query<{ token: string }>(
-        `SELECT token FROM ingest_tokens WHERE workspace_id = $1`,
+        `SELECT token FROM bureau.ingest_tokens WHERE workspace_id = $1`,
         [userB.workspaceId]
       );
       
@@ -188,7 +188,7 @@ describe('Workspace Isolation', () => {
       await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
       
       const tokens = await query<{ workspace_id: string }>(
-        `SELECT workspace_id FROM ingest_tokens`
+        `SELECT workspace_id FROM bureau.ingest_tokens`
       );
       
       // User A should only see tokens from their workspace
@@ -205,7 +205,7 @@ describe('Workspace Isolation', () => {
       try {
         // Try to insert stream into User B's workspace as User A
         await execute(
-          `INSERT INTO streams (workspace_id, name, category, description) 
+          `INSERT INTO bureau.streams (workspace_id, name, category, description) 
            VALUES ($1, 'Malicious Stream', 'production', 'Should fail')`,
           [userB.workspaceId]
         );
@@ -222,7 +222,7 @@ describe('Workspace Isolation', () => {
       await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
       
       const result = await query<{ id: string }>(
-        `UPDATE streams SET name = 'Hacked' WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
+        `UPDATE bureau.streams SET name = 'Hacked' WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
       );
       
       // Should return 0 rows (RLS blocks update)
@@ -233,7 +233,7 @@ describe('Workspace Isolation', () => {
       await execute(`SELECT auth.set_user($1::uuid)`, [userA.id]);
       
       const result = await query<{ id: string }>(
-        `DELETE FROM streams WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
+        `DELETE FROM bureau.streams WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' RETURNING id`
       );
       
       // Should return 0 rows (RLS blocks delete)

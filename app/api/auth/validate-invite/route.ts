@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       expires_at: Date;
     }>(
       `SELECT code, claimed_by, expires_at 
-       FROM pilot_invites
+       FROM bureau.pilot_invites
        WHERE code = $1 AND expires_at > NOW() AND claimed_by IS NULL`,
       [code]
     );

@@ -16,6 +16,13 @@ function getPool(): Pool {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
     });
+    
+    // Set search_path to bureau schema for all connections
+    _pool.on('connect', (client) => {
+      client.query('SET search_path TO bureau, extensions, auth', (err) => {
+        if (err) console.error('Failed to set search_path:', err);
+      });
+    });
   }
   return _pool;
 }
@@ -29,6 +36,13 @@ function getAdminPool(): Pool {
       max: 5,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
+    });
+    
+    // Set search_path to bureau schema for all admin connections
+    _adminPool.on('connect', (client) => {
+      client.query('SET search_path TO bureau, extensions, auth', (err) => {
+        if (err) console.error('Failed to set search_path on admin pool:', err);
+      });
     });
   }
   return _adminPool;

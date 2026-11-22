@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 import { query, execute } from '@/lib/db';
 import { cookies } from 'next/headers';
 
@@ -21,15 +21,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: false,
-        detectSessionInUrl: false,
+    const cookieStore = await cookies();
+
+    // Create Supabase client with cookie handling (manages refresh tokens)
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // Route handler can set cookies
+          }
+        },
+        remove(name: string, options: any) {
+          try {
+            cookieStore.set({ name, value: '', ...options });
+          } catch (error) {
+            // Route handler can remove cookies
+          }
+        },
       },
     });
 
-    // Verify the OTP
+    // Verify the OTP - this sets the session cookies automatically
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash,
       type: type as any,
@@ -50,30 +67,15 @@ export async function GET(request: NextRequest) {
 
     const userId = data.user.id;
     const email = data.user.email!;
-    const accessToken = data.session.access_token;
-
-    // Set session cookie with Supabase access token
-    const cookieStore = await cookies();
-    cookieStore.set('bureau_session', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-    });
 
     try {
-      // Ensure user exists in our auth.users table (for workspace linking)
-      await execute(
-        `INSERT INTO auth.users (id, email) 
-         VALUES ($1::uuid, $2) 
-         ON CONFLICT (id) DO NOTHING`,
-        [userId, email]
-      );
+      // Note: DO NOT insert into auth.users - Supabase Auth owns that table
+      // Bureau only creates workspace/membership records
 
       // Check if user has a workspace
       const workspaces = await query<{ id: string }>(
-        `SELECT w.id FROM workspaces w
-         JOIN workspace_members wm ON wm.workspace_id = w.id
+        `SELECT w.id FROM bureau.workspaces w
+         JOIN bureau.workspace_members wm ON wm.workspace_id = w.id
          WHERE wm.user_id = $1::uuid`,
         [userId]
       );
@@ -83,7 +85,7 @@ export async function GET(request: NextRequest) {
         const workspaceName = `${email.split('@')[0]}'s Workspace`;
 
         const newWorkspace = await query<{ id: string }>(
-          'INSERT INTO workspaces (name, created_by) VALUES ($1, $2::uuid) RETURNING id',
+          'INSERT INTO bureau.workspaces (name, created_by) VALUES ($1, $2::uuid) RETURNING id',
           [workspaceName, userId]
         );
 
@@ -91,14 +93,14 @@ export async function GET(request: NextRequest) {
 
         // Add user as owner
         await execute(
-          `INSERT INTO workspace_members (workspace_id, user_id, role, joined_at)
+          `INSERT INTO bureau.workspace_members (workspace_id, user_id, role, joined_at)
            VALUES ($1::uuid, $2::uuid, 'owner', NOW())`,
           [workspaceId, userId]
         );
 
         // Track onboarding
         await execute(
-          'INSERT INTO onboarding_progress (workspace_id, signup_completed_at) VALUES ($1::uuid, NOW())',
+          'INSERT INTO bureau.onboarding_progress (workspace_id, signup_completed_at) VALUES ($1::uuid, NOW())',
           [workspaceId]
         );
 

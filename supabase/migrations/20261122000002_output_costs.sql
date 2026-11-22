@@ -1,9 +1,11 @@
 -- Output costs tracking for cost-per-output P&L
 -- Tracks generation costs per output (episode, video, Short) with views and trust levels
 
-CREATE TABLE output_costs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  stream_id UUID NOT NULL REFERENCES streams(id) ON DELETE CASCADE,
+SET search_path TO bureau, extensions;
+
+CREATE TABLE bureau.output_costs (
+  id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  stream_id UUID NOT NULL REFERENCES bureau.streams(id) ON DELETE CASCADE,
   output_id TEXT NOT NULL, -- e.g., "ep12", "short-too-many-trees"
   output_name TEXT NOT NULL,
   output_type TEXT NOT NULL, -- episode, short, video, post, image
@@ -36,28 +38,28 @@ CREATE TABLE output_costs (
 );
 
 -- Enable RLS
-ALTER TABLE output_costs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bureau.output_costs ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can only see output costs for streams in their workspaces
-CREATE POLICY output_costs_workspace_isolation ON output_costs
+CREATE POLICY output_costs_workspace_isolation ON bureau.output_costs
   FOR ALL
   USING (
     stream_id IN (
-      SELECT s.id FROM streams s
-      JOIN workspace_members wm ON wm.workspace_id = s.workspace_id
+      SELECT s.id FROM bureau.streams s
+      JOIN bureau.workspace_members wm ON wm.workspace_id = s.workspace_id
       WHERE wm.user_id = auth.uid()
     )
   );
 
 -- Indexes
-CREATE INDEX idx_output_costs_stream ON output_costs(stream_id);
-CREATE INDEX idx_output_costs_trust ON output_costs(trust_level);
-CREATE INDEX idx_output_costs_published ON output_costs(published_at);
+CREATE INDEX idx_output_costs_stream ON bureau.output_costs(stream_id);
+CREATE INDEX idx_output_costs_trust ON bureau.output_costs(trust_level);
+CREATE INDEX idx_output_costs_published ON bureau.output_costs(published_at);
 
 -- Seed data for Ember stream (YouTube Shorts)
 -- Note: stream_id will be inserted after workspace/stream setup
 -- This is example data structure for reference
 
-COMMENT ON TABLE output_costs IS 'Cost-per-output P&L tracking for AI-generated content. Each output (episode, video, Short) has generation costs linked to views and performance.';
-COMMENT ON COLUMN output_costs.trust_level IS 'verified = API-sourced, declared = manually entered, estimated = formula-based';
-COMMENT ON COLUMN output_costs.verified_sources IS 'Array of data sources used: elevenlabs-api, higgsfield-api, youtube-api, manual-entry, csv-import';
+COMMENT ON TABLE bureau.output_costs IS 'Cost-per-output P&L tracking for AI-generated content. Each output (episode, video, Short) has generation costs linked to views and performance.';
+COMMENT ON COLUMN bureau.output_costs.trust_level IS 'verified = API-sourced, declared = manually entered, estimated = formula-based';
+COMMENT ON COLUMN bureau.output_costs.verified_sources IS 'Array of data sources used: elevenlabs-api, higgsfield-api, youtube-api, manual-entry, csv-import';

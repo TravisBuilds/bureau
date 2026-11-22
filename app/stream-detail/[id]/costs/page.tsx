@@ -268,7 +268,7 @@ export default function StreamCostsPage({ params }: { params: Promise<{ id: stri
         </div>
         
         <div className="mt-4 text-xs text-slate-500">
-          Last updated: {outputs[0] ? formatFullDateTime(outputs[0].created_at) : 'Never'}
+          Last updated: {formatFullDateTime(new Date().toISOString())}
         </div>
       </div>
     </div>

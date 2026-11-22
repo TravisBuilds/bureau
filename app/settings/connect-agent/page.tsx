@@ -125,7 +125,7 @@ export default function ConnectAgentPage() {
               <h3 className="text-lg font-semibold text-slate-900 mb-3">Usage Example</h3>
               <div className="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto">
                 <pre className="text-sm">{`curl -X POST http://localhost:3000/api/ingest \\
-  -H "Authorization: Bearer ${justCreatedToken || (latestToken ? `bureau_••••${latestToken.token.slice(-4)}` : 'YOUR_TOKEN')}" \\
+  -H "Authorization: Bearer $BUREAU_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "type": "intake",
@@ -138,6 +138,9 @@ export default function ConnectAgentPage() {
     }
   }'`}</pre>
               </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Set BUREAU_TOKEN environment variable to your token, or replace $BUREAU_TOKEN with the actual token above.
+              </p>
             </div>
             
             {/* Documentation link */}

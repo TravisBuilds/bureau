@@ -42,12 +42,12 @@ export default function OnboardingV2Page() {
   };
 
   const handleSourceSelected = () => {
-    // Simulate loading attempts (using REAL Ember Ep12 data: $30.93 total)
+    // Simulate loading attempts (using REAL Ember Ep12 ledger: $30.93 total, cash only)
     if (source === 'manual') {
       setAttempts([
-        { id: '1', description: 'Video generation (Higgsfield)', costUsd: 25.50, hfCredits: 3842.5, failed: false },
-        { id: '2', description: 'Voice generation (ElevenLabs)', costUsd: 5.43, elChars: 1812, failed: false },
-        { id: '3', description: 'Failed render #1', costUsd: 0, hfCredits: 0, failed: true },
+        { id: '1', description: 'Video generation - Higgsfield (ledger)', costUsd: 20.15, failed: false },
+        { id: '2', description: 'Voice generation - ElevenLabs (ledger)', costUsd: 8.42, failed: false },
+        { id: '3', description: 'Background music license (ledger)', costUsd: 2.36, failed: false },
       ]);
     }
     setStep('assign');
@@ -263,11 +263,14 @@ export default function OnboardingV2Page() {
                   <div className="text-right">
                     {assignedHF > 0 && <div>{assignedHF.toLocaleString()} HF credits</div>}
                     {assignedEL > 0 && <div>{assignedEL.toLocaleString()} EL chars</div>}
+                    {assignedHF === 0 && assignedEL === 0 && <div className="text-gray-400">Not recorded</div>}
                   </div>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-gray-600">Failed attempts</span>
-                  <span className="text-red-600">${failedCost.toFixed(2)}</span>
+                  <span className={failedCost > 0 ? "text-red-600" : "text-gray-400"}>
+                    {attempts.some(a => a.failed) ? `$${failedCost.toFixed(2)}` : 'Not recorded'}
+                  </span>
                 </div>
                 <div className="flex justify-between py-2">
                   <span className="text-gray-600">Unallocated</span>

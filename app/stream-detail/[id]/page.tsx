@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, TrendingDown, TrendingUp, AlertCircle, ExternalLink } from 'lucide-react';
 import { REAL_STREAMS, ATTENTION_ITEMS, SHARED_ELEVENLABS, SHARED_HIGGSFIELD, EMBER_TOP_SHORTS } from '@/lib/real-stream-data';
 import { formatMetricValue } from '@/lib/stream-metrics-types';
+import { formatFullDateTime, formatShortDate } from '@/lib/timezone-utils';
 
 export default function StreamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -92,7 +93,7 @@ export default function StreamDetailPage({ params }: { params: Promise<{ id: str
             <span className="text-slate-600">{stream.dataSource}</span>
             <span className="text-slate-500">•</span>
             <span className="text-slate-500 text-xs">
-              Last updated {new Date(stream.lastUpdated!).toLocaleString()}
+              Last updated {formatFullDateTime(stream.lastUpdated!)}
             </span>
           </div>
         </div>
@@ -142,7 +143,7 @@ export default function StreamDetailPage({ params }: { params: Promise<{ id: str
                 {stream.historicalMetrics.map((metric, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">
-                      {new Date(metric.timestamp).toLocaleDateString()}
+                      {formatShortDate(metric.timestamp)}
                     </span>
                     <span className="text-sm font-medium text-slate-900">
                       {metric.value.toLocaleString()} followers

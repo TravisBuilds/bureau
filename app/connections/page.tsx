@@ -5,6 +5,7 @@ import { Building2, Shield, RefreshCw, Ban, ChevronDown, ChevronRight, AlertCirc
 import { useRouter } from 'next/navigation';
 import { SAMPLE_CONNECTIONS } from '@/lib/sample-connections';
 import { Connection, PROVIDER_DEFINITIONS, getConnectionFreshness } from '@/lib/connection-types';
+import { formatFullDateTime } from '@/lib/timezone-utils';
 
 export default function ConnectionsPage() {
   const router = useRouter();
@@ -101,6 +102,17 @@ export default function ConnectionsPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
+        {/* Data Pull Notice */}
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div className="flex-1 text-sm text-blue-800">
+              <strong>Data snapshot:</strong> All connections show data pulled once on Nov 21, 2026 at 8:24 PM PT by Bureau operator.
+              This is not live sync — in production, connections would sync automatically.
+            </div>
+          </div>
+        </div>
+
         {/* Summary */}
         <div className="mb-8 p-6 bg-slate-50 border border-slate-200 rounded-xl">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -115,9 +127,9 @@ export default function ConnectionsPage() {
               </div>
             </div>
             <div>
-              <div className="text-sm text-slate-500 mb-1">Revoked</div>
+              <div className="text-sm text-slate-500 mb-1">Not Connected</div>
               <div className="text-2xl font-semibold text-slate-400">
-                {connections.filter(c => c.status === 'revoked').length}
+                0
               </div>
             </div>
             <div>
@@ -227,9 +239,9 @@ export default function ConnectionsPage() {
                         </div>
 
                         <div>
-                          <div className="text-xs text-slate-500 mb-1">Connected At</div>
+                          <div className="text-xs text-slate-500 mb-1">Data Pulled At</div>
                           <div className="text-sm text-slate-900">
-                            {new Date(conn.connectedAt).toLocaleString()}
+                            {formatFullDateTime(conn.connectedAt)}
                           </div>
                         </div>
 
@@ -262,7 +274,7 @@ export default function ConnectionsPage() {
                           <div>
                             <div className="text-xs text-slate-500 mb-1">Expires At</div>
                             <div className="text-sm text-slate-900">
-                              {new Date(conn.expiresAt).toLocaleString()}
+                              {formatFullDateTime(conn.expiresAt)}
                             </div>
                           </div>
                         )}
@@ -273,7 +285,7 @@ export default function ConnectionsPage() {
                             <div className="text-sm text-red-700">{conn.errorMessage}</div>
                             {conn.errorAt && (
                               <div className="text-xs text-red-600 mt-1">
-                                {new Date(conn.errorAt).toLocaleString()}
+                                {formatFullDateTime(conn.errorAt)}
                               </div>
                             )}
                           </div>

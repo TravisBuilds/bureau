@@ -1,9 +1,12 @@
 /**
- * Sample connections for prototype
- * Shows various connection states and methods
+ * Real connection state for prototype
+ * Data pulled once on 2026-11-21 at 8:24 PM PT by Bureau operator (not live sync)
  */
 
 import { Connection, ConnectionAuditEntry } from './connection-types';
+
+// All data pulled at this timestamp
+const DATA_PULL_TIME = '2026-11-21T20:24:00-08:00'; // 8:24 PM PT
 
 export const SAMPLE_CONNECTIONS: Connection[] = [
   // X (Twitter) - OAuth, used by Elon stream
@@ -12,8 +15,8 @@ export const SAMPLE_CONNECTIONS: Connection[] = [
     provider: 'x-twitter',
     method: 'oauth',
     status: 'connected',
-    connectedAt: '2026-11-15T10:00:00Z',
-    lastSyncAt: '2026-11-22T03:30:00Z',
+    connectedAt: '2026-11-21T20:24:00-08:00',
+    lastSyncAt: DATA_PULL_TIME,
     scopes: ['read'],
     scopeDetails: 'Read followers, tweets, and engagement metrics',
     connectedBy: 'user-travis',
@@ -25,8 +28,8 @@ export const SAMPLE_CONNECTIONS: Connection[] = [
       },
     ],
     oauthProvider: 'x-twitter',
-    oauthAccountId: '@traviswu',
-    oauthAccountName: 'Travis Wu',
+    oauthAccountId: '@SadCreatorTalks',
+    oauthAccountName: 'SadCreatorTalks',
   },
 
   // ElevenLabs - API key, shared by Ember and DuckDuckGoose
@@ -35,8 +38,8 @@ export const SAMPLE_CONNECTIONS: Connection[] = [
     provider: 'elevenlabs',
     method: 'api-key',
     status: 'connected',
-    connectedAt: '2026-11-10T14:00:00Z',
-    lastSyncAt: '2026-11-22T02:00:00Z',
+    connectedAt: '2026-11-21T20:24:00-08:00',
+    lastSyncAt: DATA_PULL_TIME,
     scopes: ['read'],
     scopeDetails: 'Read API usage, credits, and voice library',
     connectedBy: 'user-travis',
@@ -63,8 +66,8 @@ export const SAMPLE_CONNECTIONS: Connection[] = [
     provider: 'youtube',
     method: 'oauth',
     status: 'connected',
-    connectedAt: '2026-11-12T09:00:00Z',
-    lastSyncAt: '2026-11-21T18:00:00Z',
+    connectedAt: '2026-11-21T20:24:00-08:00',
+    lastSyncAt: DATA_PULL_TIME,
     scopes: ['read'],
     scopeDetails: 'Read video views, subscribers, watch time',
     connectedBy: 'user-travis',
@@ -86,8 +89,8 @@ export const SAMPLE_CONNECTIONS: Connection[] = [
     provider: 'higgsfield',
     method: 'api-key',
     status: 'connected',
-    connectedAt: '2026-11-18T16:00:00Z',
-    lastSyncAt: '2026-11-22T01:00:00Z',
+    connectedAt: '2026-11-21T20:24:00-08:00',
+    lastSyncAt: DATA_PULL_TIME,
     scopes: ['read'],
     scopeDetails: 'Read API usage, credit balance, generation history',
     connectedBy: 'user-travis',
@@ -103,31 +106,14 @@ export const SAMPLE_CONNECTIONS: Connection[] = [
     apiKeyHint: '...m3p8',
   },
 
-  // OpenAI - Not connected yet
-  {
-    id: 'conn-openai-1',
-    provider: 'openai',
-    method: 'api-key',
-    status: 'revoked',
-    connectedAt: '2026-11-05T12:00:00Z',
-    lastSyncAt: '2026-11-08T15:00:00Z',
-    scopes: ['read'],
-    scopeDetails: 'Read token usage and API costs',
-    connectedBy: 'user-travis',
-    connectedByName: 'Travis Wu',
-    streamsUsing: [],
-    apiKeyType: 'read-only',
-    apiKeyHint: '...x2d4',
-  },
-
-  // GitHub - OAuth, could be used for various streams
+  // GitHub - OAuth, used for DuckDuckGoose
   {
     id: 'conn-github-1',
     provider: 'github',
     method: 'oauth',
     status: 'connected',
-    connectedAt: '2026-11-01T08:00:00Z',
-    lastSyncAt: '2026-11-22T00:00:00Z',
+    connectedAt: '2026-11-21T20:24:00-08:00',
+    lastSyncAt: DATA_PULL_TIME,
     scopes: ['read'],
     scopeDetails: 'Read commits, PRs, CI status',
     connectedBy: 'user-travis',

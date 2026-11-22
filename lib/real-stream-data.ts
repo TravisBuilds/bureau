@@ -211,6 +211,12 @@ const EMBER_METRICS: MetricValue[] = [
     source: 'YouTube @BedtimewithEmber-i9n',
   },
   {
+    metricId: 'cost-per-episode-partial',
+    value: 30.78, // Average of Ep11 ($30.63) and Ep12 ($30.93)
+    timestamp: DATA_COLLECTED_AT,
+    source: 'Production ledger (Ep11–12 only, partial)',
+  },
+  {
     metricId: 'ep11-cost-usd',
     value: 30.63,
     timestamp: DATA_COLLECTED_AT,
@@ -318,7 +324,8 @@ export const REAL_STREAMS: MetricStream[] = [
       { id: 'shorts-published', label: 'Shorts Published', unit: 'shorts', kind: 'count', preferredChart: 'bar', isHeadline: true },
       { id: 'views', label: 'Views', unit: 'views', kind: 'count', preferredChart: 'none', isHeadline: true },
       { id: 'subscribers', label: 'Subscribers', unit: 'subscribers', kind: 'count', preferredChart: 'none', isHeadline: true },
-      { id: 'episodes-locked', label: 'Episodes Locked', unit: 'episodes', kind: 'count', preferredChart: 'none', isHeadline: true },
+      { id: 'cost-per-episode-partial', label: 'Cost per Episode', unit: '$/ep', kind: 'currency', preferredChart: 'none', isHeadline: true },
+      { id: 'episodes-locked', label: 'Episodes Locked', unit: 'episodes', kind: 'count', preferredChart: 'none', isHeadline: false },
     ],
     currentMetrics: EMBER_METRICS,
     historicalMetrics: [],

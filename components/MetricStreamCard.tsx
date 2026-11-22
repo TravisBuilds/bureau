@@ -2,6 +2,7 @@
 
 import { TrendingUp, Users, Video, FileText, AlertCircle } from 'lucide-react';
 import { MetricStream, formatMetricValue } from '@/lib/stream-metrics-types';
+import { formatFullDateTime } from '@/lib/timezone-utils';
 
 interface Props {
   stream: MetricStream;
@@ -62,7 +63,12 @@ export default function MetricStreamCard({ stream, onClick }: Props) {
             
             return (
               <div key={def.id}>
-                <div className="text-xs text-slate-500 mb-1">{def.label}</div>
+                <div className="text-xs text-slate-500 mb-1">
+                  {def.label}
+                  {def.id === 'cost-per-episode-partial' && (
+                    <span className="ml-1 text-slate-400">(partial)</span>
+                  )}
+                </div>
                 {metricValue ? (
                   <div className={`text-lg font-semibold ${
                     def.kind === 'growth' && metricValue.value < 0 
@@ -71,7 +77,10 @@ export default function MetricStreamCard({ stream, onClick }: Props) {
                       ? 'text-amber-600'
                       : 'text-slate-900'
                   }`}>
-                    {formatMetricValue(metricValue.value, def)}
+                    {def.id === 'cost-per-episode-partial' 
+                      ? `$${metricValue.value.toFixed(2)}/ep`
+                      : formatMetricValue(metricValue.value, def)
+                    }
                   </div>
                 ) : (
                   <div className="text-sm text-slate-400">—</div>
@@ -95,7 +104,7 @@ export default function MetricStreamCard({ stream, onClick }: Props) {
       {/* Last Updated */}
       {hasData && stream.lastUpdated && (
         <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
-          Updated {new Date(stream.lastUpdated).toLocaleString()}
+          Updated {formatFullDateTime(stream.lastUpdated)}
         </div>
       )}
     </button>

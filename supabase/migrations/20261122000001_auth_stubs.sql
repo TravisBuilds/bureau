@@ -35,7 +35,7 @@ RETURNS VOID
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  PERFORM set_config('request.jwt.claim.sub', user_id::TEXT, TRUE);
+  PERFORM set_config('request.jwt.claim.sub', user_id::TEXT, FALSE); -- FALSE = session-wide, not transaction-local
 END;
 $$;
 

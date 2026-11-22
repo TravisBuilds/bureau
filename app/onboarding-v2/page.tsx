@@ -45,9 +45,9 @@ export default function OnboardingV2Page() {
     // Simulate loading attempts
     if (source === 'manual') {
       setAttempts([
-        { id: '1', description: 'Video generation (Higgsfield)', hfCredits: 3842.5, failed: false },
-        { id: '2', description: 'Voice generation (ElevenLabs)', elChars: 3695, failed: false },
-        { id: '3', description: 'Failed render #1', hfCredits: 500, failed: true },
+        { id: '1', description: 'Video generation (Higgsfield)', costUsd: 25.50, hfCredits: 3842.5, failed: false },
+        { id: '2', description: 'Voice generation (ElevenLabs)', costUsd: 11.08, elChars: 3695, failed: false },
+        { id: '3', description: 'Failed render #1', costUsd: 3.50, hfCredits: 500, failed: true },
       ]);
     }
     setStep('assign');

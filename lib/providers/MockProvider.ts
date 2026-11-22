@@ -144,7 +144,7 @@ export class MockProvider implements AgentProvider {
     conversationId?: string
   ): Promise<{ messageId: string; response: string }> {
     const convId = conversationId || `conv-${Date.now()}`;
-    const messageId = `msg-${Date.now()}`;
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // Store conversation
     if (!mockConversations.has(convId)) {

@@ -187,102 +187,234 @@ The app is seeded with real data from Plum List:
 
 **Bureau's verdict:** "Not enough evidence" with free tier + $50/month cost cap recommendation.
 
-## Multi-Agent Support
+## Real Agent Connections & Task Dispatch
 
-### Connect Multiple Agents Per Project
+**Bureau is now the central command for your project agents.**
 
-Bureau supports multiple agents (Grok Bot, ChatGPT, Claude, etc.) reporting on the same project:
+### Core Capabilities
 
-- Each agent submits its own status report
-- Each agent provides its "take" on Bureau's decisions (approve / reject / modify / defer)
-- Bureau shows takes side-by-side with agreement level (unanimous / majority / split)
-- Bureau's deterministic engine breaks ties
+1. **Sign In Agents** - Connect via OAuth or API key (server-side encrypted)
+2. **Task Dispatch** - Send tasks from Bureau to your agents
+3. **Task Board** - Track queued/running/done/needs-founder
+4. **Live Chat** - Chat through providers' APIs (not copy/paste)
+5. **Multi-Agent Takes** - Different agents provide recommendations side-by-side
 
-### Agent Takes
+### Architecture
 
-When Bureau derives a decision (e.g. "Approve return-tracking fix"), connected agents can submit their takes:
+```
+┌─────────────────────────────────────────────────┐
+│                    Bureau                        │
+│  (Deterministic Decision Engine + Central Cmd)   │
+└─────────────────────────────────────────────────┘
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+   ┌────▼────┐   ┌───▼────┐   ┌───▼────┐
+   │ OpenAI  │   │ Cursor │   │ Custom │
+   │ Agents  │   │ Agents │   │Webhooks│
+   └─────────┘   └────────┘   └────────┘
+```
 
-```json
-{
-  "recommendation": "approve" | "reject" | "modify" | "defer",
-  "reasoning": "Why I recommend this...",
-  "confidence": "high" | "medium" | "low",
-  "modifications": "If 'modify', what changes..."
+### Provider Interface
+
+All providers implement:
+
+```typescript
+interface AgentProvider {
+  type: ProviderType;
+  connect(params: { apiKey?, oauthCode?, webhookUrl?, mcpConfig? }): Promise<AgentCredentials>;
+  listAgents(credentials: AgentCredentials): Promise<ConnectedAgent[]>;
+  dispatchTask(agentId, brief, context, credentials?): Promise<TaskDispatchResult>;
+  getTaskStatus(taskId, credentials?): Promise<AgentTask>;
+  streamTask(taskId, credentials?): AsyncIterableIterator<string>;
+  getTaskResult(taskId, credentials?): Promise<string>;
+  sendMessage(agentId, message, conversationId?, credentials?): Promise<{ messageId, response }>;
 }
 ```
 
-### Bureau as Tiebreaker
+### Security Architecture
 
-When agents disagree, Bureau breaks ties using deterministic logic:
-- Priority 1 + blocks a metric → Approve
-- Low founder time cost (< 10 min) → Approve
-- Split decision + no clear winner → Flag for review
+**Server-side credential storage only. Credentials NEVER exposed to client.**
 
-Bureau's verdict always includes its reasoning and whether it broke a tie.
-
-### Chat Adapter Interface (Prototype)
-
-**Current implementation:** Manual copy/paste bridge
-- Founder copies prompt from Bureau
-- Pastes into Grok Bot or ChatGPT
-- Copies agent's reply back to Bureau
-
-**Production interface (plug in later):**
+- **Encryption**: AES-256-CBC with IV (unique per credential)
+- **Storage**: `data/credentials/` (gitignored, server-side only)
+- **API**: All credential operations in API routes, never client components
+- **Sanitization**: `sanitizeForClient()` strips sensitive fields before responses
+- **Environment**: `BUREAU_ENCRYPTION_KEY` env var (defaults to dev key with warning)
 
 ```typescript
-interface ChatAdapter {
-  provider: 'grok-bot' | 'chatgpt' | 'claude' | 'gemini';
-  sendMessage(message: string, context?: string): Promise<string>;
-  fetchTake(decisionContext: string): Promise<AgentTake>;
-}
+// Server-side only
+const { encrypted, iv } = encryptCredential(apiKey);
+storeCredentials(projectName, providerId, { encrypted, iv });
+
+// API responses always sanitized
+const response = sanitizeForClient(credentialsObj);
+// response.encrypted = undefined (removed)
+// response.iv = undefined (removed)
 ```
 
-**To add a real provider:**
-1. Implement `ChatAdapter` interface (see `lib/agent-connection-types.ts`)
-2. Add API key/credentials via environment variables
-3. Replace `MockChatAdapter` with your implementation
+### Supported Providers
 
-Example:
+| Provider | Auth Method | Status | Setup |
+|----------|-------------|--------|-------|
+| **Mock** | API Key | ✅ Implemented | No setup needed (dev mode) |
+| **OpenAI** | API Key | 📋 Planned | Requires OPENAI_API_KEY |
+| **Cursor Agents** | OAuth | 📋 Planned | OAuth flow + project linking |
+| **Custom Webhook** | URL + Secret | 📋 Planned | POST endpoint implementing interface |
+| **MCP** | Config | 📋 Planned | MCP server config |
+
+### Task Lifecycle
+
+```
+Bureau → dispatch(agent, brief, context)
+  ↓
+Queued → Running → Completed
+  ↓                    ↓
+Agent executes    Needs Founder?
+                       ↓
+                  Approve/Reject
+```
+
+**Task Board shows:**
+- Queued: Waiting to start
+- Running: Agent is working
+- Needs Founder: Waiting for your approval/rejection
+- Completed: Done (approved)
+- Failed: Error (see logs)
+
+### Development Mode (Mock Provider)
+
+The mock provider simulates realistic async task execution **without any paid API calls**:
+
+- Returns 2 mock agents: "Mock Agent Alpha" and "Mock Agent Beta"
+- Simulates 3-second task execution (queued → running → completed)
+- Provides chat responses with echo
+- NO real API calls, NO credits spent
+
+**How to test:**
+1. Start dev server: `npm run dev`
+2. Open a project detail page
+3. Click "Manage Connections"
+4. Connect "Mock Provider" (any API key works)
+5. Dispatch tasks from "What to do next" items
+6. Watch Task Board for status updates
+7. Chat with mock agents in live chat panel
+
+### Plugging in Real Providers
+
+To add a real provider (OpenAI, Cursor, etc.):
+
+1. **Implement the interface** in `lib/providers/YourProvider.ts`:
 ```typescript
-class OpenAIChatAdapter implements ChatAdapter {
-  provider = 'chatgpt';
+export class OpenAIProvider implements AgentProvider {
+  type = 'openai' as const;
   
-  async sendMessage(message: string): Promise<string> {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: message }],
-      }),
-    });
-    const data = await response.json();
-    return data.choices[0].message.content;
+  async connect(params: { apiKey: string }): Promise<AgentCredentials> {
+    // Validate API key with OpenAI
+    // Return encrypted credentials
   }
   
-  // ... implement fetchTake
+  async listAgents(credentials: AgentCredentials): Promise<ConnectedAgent[]> {
+    // List available OpenAI agents
+  }
+  
+  async dispatchTask(agentId: string, brief: string, context?: string, credentials?: AgentCredentials): Promise<TaskDispatchResult> {
+    // Start OpenAI agent task
+  }
+  
+  // ... implement remaining methods
 }
 ```
+
+2. **Register in factory** (`lib/agent-provider-interface.ts`):
+```typescript
+export function getProvider(type: ProviderType): AgentProvider {
+  switch (type) {
+    case 'openai': return new OpenAIProvider();
+    case 'mock': return new MockProvider();
+    // ...
+  }
+}
+```
+
+3. **Update connection UI** (`components/ConnectionsPage.tsx`):
+- Show setup instructions for your provider
+- Handle provider-specific auth flow (OAuth vs API key)
+
+4. **Add tests** (`lib/providers/YourProvider.test.ts`):
+- Mock HTTP calls (never hit real APIs in tests)
+- Test connection, list, dispatch, status, chat
+- Test error cases
+
+### What You Need to Supply (Real Providers)
+
+**For OpenAI:**
+- OpenAI API key (from https://platform.openai.com/api-keys)
+- Agents created in OpenAI Agents API
+- Budget limits configured
+
+**For Cursor Agents:**
+- OAuth app registration with Cursor
+- CLIENT_ID and CLIENT_SECRET in `.env.local`
+- Redirect URI: `http://localhost:3000/api/auth/callback/cursor`
+
+**For Custom Webhooks:**
+- POST endpoint implementing AgentProvider interface
+- Webhook secret for HMAC signing
+- Agent list endpoint
+
+**For MCP:**
+- MCP server config (stdio or HTTP)
+- Server binary or URL
+- Authentication tokens
+
+### Environment Variables
+
+```bash
+# .env.local (create this file, it's gitignored)
+
+# REQUIRED for production
+BUREAU_ENCRYPTION_KEY=your-32-char-encryption-key-here
+
+# Optional provider credentials
+OPENAI_API_KEY=sk-...
+CURSOR_CLIENT_ID=...
+CURSOR_CLIENT_SECRET=...
+```
+
+**Security warning:** Never commit `.env.local` to git. The encryption key is used to encrypt all stored credentials.
 
 ## Development
 
 ### Project Structure
 ```
 ├── lib/
-│   ├── types.ts              # TypeScript interfaces
-│   ├── engine.ts             # Decision engine (pure functions)
-│   ├── seed-data.ts          # Business scenarios
-│   └── engine.test.ts        # Unit tests
+│   ├── decision-engine-v2.ts        # Decision engine (pure functions)
+│   ├── agent-report-types.ts       # TypeScript interfaces
+│   ├── agent-reports-seed.ts       # Real project data (Plum List)
+│   ├── agent-provider-interface.ts # Provider interface
+│   ├── credential-storage.ts       # Server-side encryption
+│   ├── take-comparison.ts          # Multi-agent take logic
+│   ├── providers/
+│   │   ├── MockProvider.ts         # Mock provider (dev mode)
+│   │   └── [future providers]      # OpenAI, Cursor, etc.
+│   └── *.test.ts                   # Unit tests (82 tests)
 ├── app/
-│   ├── page.tsx              # Home page
-│   └── api/evaluate/
-│       └── route.ts          # API endpoint
-├── components/               # React components
-└── scripts/
-    └── evaluate.ts           # CLI tool
+│   ├── page.tsx                    # Portfolio home
+│   └── api/
+│       ├── connections/route.ts    # Connect agents
+│       ├── tasks/route.ts          # Dispatch & track tasks
+│       └── chat/route.ts           # Live chat
+├── components/
+│   ├── PortfolioHome.tsx           # Portfolio view
+│   ├── ProjectDetailView.tsx       # Project detail
+│   ├── ConnectionsPage.tsx         # Agent sign-in
+│   ├── TaskBoard.tsx               # Task tracking
+│   └── LiveChatPanel.tsx           # Live chat UI
+├── data/                           # Gitignored storage
+│   ├── credentials/                # Encrypted credentials
+│   └── tasks/                      # Task metadata
+└── screenshots/                    # Walkthrough artifacts
 ```
 
 ### Tech Stack
@@ -303,20 +435,41 @@ No deployment, no paid APIs, no secrets required.
 
 ## Testing
 
-35+ unit tests covering:
-- All business scenarios (Plum List → consulting business)
+82 unit tests covering:
+
+**Decision Engine (24 tests):**
+- Plum List fixture validation (26 users, 4 syncs, $9.97 costs)
+- Next action derivation (priority 1 = return-tracking fix)
+- Founder signal (PUSH or KEEP, not PAUSE without budget)
 - Break-even calculations
-- Key facts extraction
-- Verdict logic (all 5 levels)
-- Pricing recommendations
-- Open-to-users decisions
-- Agent action briefs
-- Edge cases (zero users, zero revenue, missing data)
+- Time asks vs budget
+
+**Take Comparison (16 tests):**
+- Agreement detection (unanimous/majority/split)
+- Bureau's tie-breaking logic
+- Disagreement identification
+- Example take validation
+
+**Agent Providers (12 tests):**
+- Mock provider connection
+- Agent listing
+- Task dispatch lifecycle (queued → running → completed)
+- Task streaming
+- Chat with conversation context
+
+**Security (12 tests):**
+- Credential encryption/decryption
+- Different IVs for same input
+- Client sanitization (strips sensitive fields)
+- API responses never expose credentials
+
+**Plus 18 more tests** for metrics calculation, project status, and utilities.
 
 Run tests:
 ```bash
-npm test          # Run once
-npm run test:watch # Watch mode
+npm test              # Run once (all 82 tests)
+npm run test:watch    # Watch mode
+npm test -- --ui      # Visual UI
 ```
 
 ## Future: Long-term Vision

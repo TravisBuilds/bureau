@@ -177,10 +177,11 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 ### Anthropic Claude API (Used for Weekly Reviews)
 
 **Claude 3.5 Haiku Pricing:**
-- **Input:** $3.00 per 1M tokens
-- **Output:** $15.00 per 1M tokens
+- **Input:** $1.00 per 1M tokens
+- **Output:** $5.00 per 1M tokens
 - **Source:** https://www.anthropic.com/pricing
 - **As of:** November 22, 2026
+- **Note:** This is Haiku pricing. Sonnet 3.5 is $3/$15 per 1M tokens.
 
 **Token Math (per user per month):**
 
@@ -190,24 +191,25 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
    - **Total per review:** 2,500 tokens (2K input + 500 output)
 
 2. **Cost per review:**
-   - Input: 2,000 tokens × ($3.00 / 1,000,000) = **$0.006**
-   - Output: 500 tokens × ($15.00 / 1,000,000) = **$0.0075**
-   - **Total:** $0.0135 per review
+   - Input: 2,000 tokens × ($1.00 / 1,000,000) = **$0.002**
+   - Output: 500 tokens × ($5.00 / 1,000,000) = **$0.0025**
+   - **Total:** $0.0045 per review
 
 3. **Monthly cost per user:**
-   - 4 reviews/month × $0.0135/review = **$0.054/user/month**
+   - 4 reviews/month × $0.0045/review = **$0.018/user/month**
 
 4. **Annual cost per user:**
-   - $0.054 × 12 months = **$0.648/user/year**
+   - $0.018 × 12 months = **$0.216/user/year**
 
 **At scale:**
-- 5 users: 20 reviews/month = 50K tokens = **$0.27/month**
-- 50 users: 200 reviews/month = 500K tokens = **$2.70/month**
-- 500 users: 2,000 reviews/month = 5M tokens = **$27/month**
-- 5,000 users: 20,000 reviews/month = 50M tokens = **$270/month**
+- 5 users: 20 reviews/month = 50K tokens = **$0.09/month**
+- 50 users: 200 reviews/month = 500K tokens = **$0.90/month**
+- 500 users: 2,000 reviews/month = 5M tokens = **$9.00/month**
+- 5,000 users: 20,000 reviews/month = 50M tokens = **$90/month**
 
 **Why Claude 3.5 Haiku:**
-- 4x cheaper than GPT-4o-mini ($0.60/$2.40 per 1M tokens)
+- 10x cheaper than GPT-4o-mini ($0.60/$2.40 per 1M tokens)
+- 3x cheaper than Sonnet 3.5 ($3/$15 per 1M tokens)
 - Fast (< 1s response time)
 - Quality sufficient for move suggestions
 
@@ -310,16 +312,16 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 **Weekly Review Generation** (using Claude 3.5 Haiku)
 - **Input:** Stream metrics + history (2,000 tokens)
 - **Output:** 2 moves with reasoning (500 tokens)
-- **Cost per review:** $0.0135
+- **Cost per review:** $0.0045
 - **Reviews per user per month:** 4
-- **Monthly cost per user:** $0.054
+- **Monthly cost per user:** $0.018
 
 **First Finding Generation** (onboarding)
 - **Input:** Initial metrics (500 tokens)
 - **Output:** Finding (200 tokens)
-- **Cost per user:** $0.0045 (one-time)
+- **Cost per user:** $0.0015 (one-time)
 
-**Total LLM cost per user per month:** $0.054
+**Total LLM cost per user per month:** $0.018
 
 ### Email Sends
 
@@ -345,9 +347,9 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 | Database storage | $0 | Within free limits up to 5K users |
 | Database rows | $0 | Unlimited |
 | Sync API calls | $0 | Free APIs (GitHub, YouTube, Stripe) |
-| LLM (weekly reviews) | $0.054 | Claude 3.5 Haiku, 4 reviews/month |
+| LLM (weekly reviews) | $0.018 | Claude 3.5 Haiku, 4 reviews/month |
 | Email sends | $0 | Included in Resend Pro |
-| **Total Variable** | **$0.054** | **~5.4¢ per user per month** |
+| **Total Variable** | **$0.018** | **~1.8¢ per user per month** |
 
 ---
 
@@ -360,7 +362,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 - Supabase free tier
 - Resend free tier
 
-**Variable costs:** 5 × $0.054 = $0.27/month
+**Variable costs:** 5 × $0.018 = $0.09/month
 
 **Total:** $1.27/month
 **Per user:** $0.25/month
@@ -373,7 +375,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 - Resend Pro: $20
 - Domain: $1
 
-**Variable costs:** 50 × $0.054 = $2.70/month
+**Variable costs:** 50 × $0.018 = $0.90/month
 
 **Total:** $68.70/month
 **Per user:** $1.37/month
@@ -382,7 +384,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 
 **Fixed costs:** $66/month (same as 50 users)
 
-**Variable costs:** 500 × $0.054 = $27/month
+**Variable costs:** 500 × $0.018 = $9/month
 
 **Total:** $93/month
 **Per user:** $0.19/month
@@ -391,7 +393,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 
 **Fixed costs:** $66/month (same, may need DB upgrade)
 
-**Variable costs:** 5,000 × $0.054 = $270/month
+**Variable costs:** 5,000 × $0.018 = $90/month
 
 **Total:** $336/month
 **Per user:** $0.067/month (~6.7¢)
@@ -416,12 +418,12 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 - Weekly reviews with LLM-powered findings
 
 **LLM Cost Inclusion:**
-- ✅ **LLM calls ARE included** in per-user variable cost ($0.054/user/month)
+- ✅ **LLM calls ARE included** in per-user variable cost ($0.018/user/month)
 - Uses Claude 3.5 Haiku for weekly reviews and first findings
 - **Token estimates per user per month:**
   - Weekly reviews: 4 reviews × (2,000 input + 500 output) = 10,000 tokens
   - First finding: 500 input + 200 output = 700 tokens (one-time)
-  - **Monthly total:** ~10,700 tokens = $0.054
+  - **Monthly total:** ~10,700 tokens = $0.018
 - Free tier: No LLM calls (users write their own reviews)
 - Plus tier: LLM calls included in price
 
@@ -443,7 +445,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 | 500 | $4,500 | $66 | $27 | $93 | $4,407 | **98.0%** |
 | 5,000 | $45,000 | $66 | $270 | $336 | $44,664 | **99.3%** |
 
-**Conclusion:** Strong unit economics at lower price point. Variable costs (including LLM) are $0.054/user. Margin improves with scale from 85% → 99%.
+**Conclusion:** Excellent unit economics at lower price point. Variable costs (including LLM) are only $0.018/user. Margin improves with scale from 85% → 99%.
 
 ### Break-Even Analysis
 
@@ -460,7 +462,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 ### Cost Scaling Analysis
 
 **Costs that scale linearly:**
-- ✅ LLM calls ($0.054/user) — scales perfectly
+- ✅ LLM calls ($0.018/user) — scales perfectly
 - ✅ Database storage ($0/user up to 5K users, then $0.125/GB)
 - ✅ Email (included up to 50K emails/month)
 
@@ -576,7 +578,7 @@ All prices verified with source links. No guesses — unknowns marked as **TBD**
 - **Total:** $66/month fixed
 
 **Enable LLM findings:**
-- Claude 3.5 Haiku: $0.054/user
+- Claude 3.5 Haiku: $0.018/user
 - **At 500 users:** +$27/month variable
 
 **Consider X API:**

@@ -20,7 +20,7 @@ export default function CompanyOverviewPage() {
     myGoal: 'Learn if travelers want this',
     signal: 'push' as const,
     signalReason: 'Critical blocker: return tracking not measurable',
-    signalDetail: 'You need to know if people come back. Right now you can't measure that.',
+    signalDetail: "You need to know if people come back. Right now you can't measure that.",
     headline: 'Too early to tell if this is becoming real income',
     monthlyBudget: 100,
     spent: 9.97,
@@ -128,15 +128,15 @@ export default function CompanyOverviewPage() {
   );
 }
 
-function SignalBanner({ signal, reason, detail }: { signal: string; reason: string; detail: string }) {
-  const colors = {
+function SignalBanner({ signal, reason, detail }: { signal: 'push' | 'keep' | 'pause' | 'kill'; reason: string; detail: string }) {
+  const colors: Record<typeof signal, string> = {
     push: 'bg-gradient-to-r from-success/20 to-success/10 border-success',
     keep: 'bg-gradient-to-r from-info/20 to-info/10 border-info',
     pause: 'bg-gradient-to-r from-warning/20 to-warning/10 border-warning',
     kill: 'bg-gradient-to-r from-danger/20 to-danger/10 border-danger',
   };
 
-  const icons = {
+  const icons: Record<typeof signal, string> = {
     push: '🚀',
     keep: '✓',
     pause: '⏸',

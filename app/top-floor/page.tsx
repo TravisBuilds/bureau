@@ -24,20 +24,20 @@ export default async function TopFloorPage() {
         s.id, s.name, s.category, s.description,
         COUNT(DISTINCT il.id) FILTER (
           WHERE il.payload->>'stream_id' IS NOT NULL 
-          AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          AND (il.payload->>'stream_id')::uuid = s.id
+          AND il.payload->>'stream_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          AND s.id::text = il.payload->>'stream_id'
         ) as log_count,
         COUNT(DISTINCT il.id) FILTER (
           WHERE il.payload->>'stream_id' IS NOT NULL 
-          AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          AND (il.payload->>'stream_id')::uuid = s.id
+          AND il.payload->>'stream_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          AND s.id::text = il.payload->>'stream_id'
           AND il.created_at > NOW() - INTERVAL '7 days'
         ) as recent_logs,
         COALESCE(SUM(
           CASE 
             WHEN il.payload->>'stream_id' IS NOT NULL
-            AND (il.payload->>'stream_id')::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            AND (il.payload->>'stream_id')::uuid = s.id
+            AND il.payload->>'stream_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            AND s.id::text = il.payload->>'stream_id'
             AND il.payload->'metadata'->>'cost_usd' IS NOT NULL
             AND il.payload->'metadata'->>'cost_usd' ~ '^[0-9]+\.?[0-9]*$'
             THEN (il.payload->'metadata'->>'cost_usd')::numeric

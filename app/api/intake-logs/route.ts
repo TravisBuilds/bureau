@@ -30,8 +30,7 @@ export async function GET(request: NextRequest) {
     }
     console.error('Error fetching intake logs:', error);
     return NextResponse.json({ 
-      error: 'Failed to fetch logs',
-      details: String(error)
+      error: 'Failed to fetch logs'
     }, { status: 500 });
   }
 }

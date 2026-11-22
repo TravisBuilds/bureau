@@ -93,10 +93,10 @@ export async function cleanupDatabase(client: Client) {
 }
 
 export async function createTestUser(client: Client, email: string, inviteCode?: string) {
-  // Insert into auth.users (dev stub)
+  // Insert into auth.users (dev stub) - use simple hash for testing
   const userResult = await client.query(
     `INSERT INTO auth.users (email, encrypted_password) 
-     VALUES ($1, crypt('password', gen_salt('bf')))
+     VALUES ($1, 'test_password_hash')
      RETURNING id`,
     [email]
   );

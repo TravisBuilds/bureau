@@ -15,6 +15,12 @@ export async function GET(
     
     const { id: streamId } = await params;
     
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(streamId)) {
+      return NextResponse.json({ error: 'Invalid stream ID format' }, { status: 400 });
+    }
+    
     // Verify stream belongs to user's workspace and fetch costs from ingest_log
     const data = await withUser(user.id, user.email, async (client) => {
       // Check stream ownership
@@ -41,7 +47,7 @@ export async function GET(
          WHERE il.workspace_id = $1
          AND il.payload->>'stream_id' IS NOT NULL
          AND il.payload->>'stream_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-         AND (il.payload->>'stream_id')::uuid = $2
+         AND il.payload->>'stream_id' = $2::text
          ORDER BY il.created_at DESC
          LIMIT 100`,
         [user.workspaceId, streamId]
@@ -83,8 +89,7 @@ export async function GET(
     }
     console.error('Error fetching stream costs:', error);
     return NextResponse.json({ 
-      error: 'Failed to fetch costs',
-      details: String(error)
+      error: 'Failed to fetch costs'
     }, { status: 500 });
   }
 }

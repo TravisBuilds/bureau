@@ -53,8 +53,7 @@ export async function POST(request: NextRequest) {
     }
     console.error('Error creating token:', error);
     return NextResponse.json({ 
-      error: 'Failed to create token',
-      details: String(error)
+      error: 'Failed to create token'
     }, { status: 500 });
   }
 }
@@ -88,8 +87,7 @@ export async function GET(request: NextRequest) {
     }
     console.error('Error listing tokens:', error);
     return NextResponse.json({ 
-      error: 'Failed to list tokens',
-      details: String(error)
+      error: 'Failed to list tokens'
     }, { status: 500 });
   }
 }

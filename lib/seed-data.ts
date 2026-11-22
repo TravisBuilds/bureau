@@ -8,58 +8,48 @@ import { BusinessArchetype } from './types';
 /**
  * Plum List - Real baseline from founder's data
  * AI-powered consumer app for curated recommendations
+ * Data from milestone1-baseline.md (actual numbers, Nov 2026)
  */
 export const plumListBaseline: BusinessArchetype = {
   name: 'Plum List',
-  description: 'AI-powered curated recommendation app (real baseline data)',
+  description: 'AI-powered curated recommendation app (real baseline data from milestone1-baseline.md)',
   inputs: {
     businessName: 'Plum List',
     agentTasks: [
       {
-        name: 'Content Curation',
-        costUSD: 0.15,
-        timeMinutes: 2,
-        frequency: 'per_action',
-        description: 'AI curates personalized recommendations per user query',
+        name: 'Places API (Nov)',
+        costUSD: 8.72,
+        timeMinutes: 0,
+        frequency: 'one_time',
+        description: 'Google Places API costs for November (estimate, not invoice)',
       },
       {
-        name: 'User Onboarding',
-        costUSD: 0.05,
-        timeMinutes: 1,
-        frequency: 'per_user',
-        description: 'AI-powered onboarding conversation',
-      },
-      {
-        name: 'Weekly Content Updates',
-        costUSD: 2.50,
-        timeMinutes: 30,
-        frequency: 'weekly',
-        description: 'AI refreshes trending recommendations',
+        name: 'Gemini API (since mid-Oct)',
+        costUSD: 1.25,
+        timeMinutes: 0,
+        frequency: 'one_time',
+        description: 'Gemini API costs since mid-October (estimate, not invoice)',
       },
     ],
-    servingCosts: [
-      {
-        name: 'API Requests',
-        costPerAction: 0.02,
-        actionsPerUser: 10,
-        description: 'Third-party API costs per user query',
-      },
-    ],
+    servingCosts: [],
     userMetrics: {
-      totalUsers: 15,
-      activeUsers: 8,
-      actionsPerUserPerMonth: 12,
-      returnRate: 0.4,
+      totalUsers: 26, // All anonymous auth users
+      activeUsers: 6, // Users with saves (excluding founder)
+      actionsPerUserPerMonth: 0, // UNKNOWN - cannot calculate without time window
+      returnRate: 0, // 0 confirmed later-day returns to saved places
+      churnRate: undefined,
     },
     revenue: {
       monthlyRevenue: 0,
       revenuePerUser: 0,
+      contributionMargin: undefined,
     },
     founderTime: {
-      hoursPerWeek: 10,
+      hoursPerWeek: 0, // UNKNOWN
+      valuePerHour: undefined,
     },
-    dataSource: 'milestone1-baseline.md',
-    dataDate: '2026-11-20',
+    dataSource: 'milestone1-baseline.md (real data)',
+    dataDate: '2026-11-22',
   },
   expectedVerdict: 'not_enough_evidence',
 };

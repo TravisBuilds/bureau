@@ -140,19 +140,23 @@ function identifyMissingData(inputs: BusinessInputs): string[] {
   }
   
   if (inputs.userMetrics.actionsPerUserPerMonth === 0) {
-    missing.push('User engagement data (actions per user)');
+    missing.push('User engagement data (actions per user per month)');
   }
   
-  if (!inputs.userMetrics.returnRate && !inputs.userMetrics.churnRate) {
-    missing.push('User retention metrics (return rate or churn rate)');
+  if (!inputs.userMetrics.returnRate && inputs.userMetrics.returnRate !== 0) {
+    missing.push('User retention data (return rate)');
   }
   
   if (inputs.revenue.monthlyRevenue === 0 && !inputs.revenue.revenuePerUser) {
     missing.push('Revenue data or pricing model');
   }
   
-  if (!inputs.revenue.contributionMargin) {
+  if (!inputs.revenue.contributionMargin && inputs.revenue.contributionMargin !== 0) {
     missing.push('Contribution margin (revenue after variable costs)');
+  }
+  
+  if (!inputs.founderTime.hoursPerWeek || inputs.founderTime.hoursPerWeek === 0) {
+    missing.push('Founder time investment (hours per week)');
   }
   
   return missing;
@@ -177,12 +181,24 @@ function extractKeyFacts(
     inputs: ['userMetrics.totalUsers', 'userMetrics.activeUsers'],
   });
   
+  // Actions per user
+  if (inputs.userMetrics.actionsPerUserPerMonth === 0) {
+    facts.push({
+      label: 'User Engagement',
+      value: 'unknown',
+      interpretation: 'Actions per user per month: unknown',
+      inputs: ['userMetrics.actionsPerUserPerMonth'],
+    });
+  }
+  
   // Cost per user
   facts.push({
     label: 'Cost per User',
-    value: `$${breakEven.costPerUser.toFixed(2)}/month`,
+    value: breakEven.costPerUser === 0 
+      ? 'unknown' 
+      : `$${breakEven.costPerUser.toFixed(2)}/month`,
     interpretation: breakEven.costPerUser === 0
-      ? 'No variable costs calculated'
+      ? 'Cannot calculate without usage data'
       : `Each user costs $${breakEven.costPerUser.toFixed(2)}/month to serve`,
     calculation: breakEven.calculation,
     inputs: ['agentTasks', 'servingCosts', 'userMetrics'],
@@ -203,22 +219,34 @@ function extractKeyFacts(
     inputs: ['revenue.monthlyRevenue', 'userMetrics.totalUsers'],
   });
   
-  // Burn rate
-  facts.push({
-    label: 'Monthly Burn',
-    value: `$${breakEven.monthlyBurnRate.toFixed(2)}`,
-    interpretation: breakEven.monthlyBurnRate > 0
-      ? `Losing $${breakEven.monthlyBurnRate.toFixed(2)}/month`
-      : `Profitable by $${Math.abs(breakEven.monthlyBurnRate).toFixed(2)}/month`,
-    calculation: `Revenue ($${monthlyRevenue.toFixed(2)}) - Costs ($${(monthlyRevenue - breakEven.monthlyBurnRate).toFixed(2)})`,
-    inputs: ['revenue', 'agentTasks', 'servingCosts'],
-  });
+  // Total costs to date (sum of all one-time costs)
+  const oneTimeCosts = inputs.agentTasks
+    .filter(task => task.frequency === 'one_time')
+    .reduce((sum, task) => sum + task.costUSD, 0);
+  
+  if (oneTimeCosts > 0 || breakEven.monthlyBurnRate !== 0) {
+    facts.push({
+      label: 'Total Costs to Date',
+      value: `$${oneTimeCosts.toFixed(2)}`,
+      interpretation: oneTimeCosts === 0
+        ? 'No costs recorded'
+        : `One-time serving costs since launch`,
+      calculation: inputs.agentTasks
+        .filter(task => task.frequency === 'one_time')
+        .map(task => `${task.name}: $${task.costUSD}`)
+        .join('\n'),
+      inputs: ['agentTasks'],
+    });
+  }
   
   // Founder time
+  const founderTimeUnknown = !inputs.founderTime.hoursPerWeek || inputs.founderTime.hoursPerWeek === 0;
   facts.push({
     label: 'Founder Time',
-    value: `${inputs.founderTime.hoursPerWeek}h/week`,
-    interpretation: inputs.founderTime.hoursPerWeek > 40
+    value: founderTimeUnknown ? 'unknown' : `${inputs.founderTime.hoursPerWeek}h/week`,
+    interpretation: founderTimeUnknown
+      ? 'Time investment not tracked'
+      : inputs.founderTime.hoursPerWeek > 40
       ? 'More than full-time commitment'
       : inputs.founderTime.hoursPerWeek > 20
       ? 'Significant part-time commitment'

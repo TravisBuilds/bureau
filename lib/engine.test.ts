@@ -9,13 +9,40 @@ import { businessArchetypes, plumListBaseline } from './seed-data';
 
 describe('Bureau Decision Engine', () => {
   describe('Plum List Baseline', () => {
+    it('should match exact baseline values from milestone1-baseline.md', () => {
+      const inputs = plumListBaseline.inputs;
+      
+      // Exact numbers from milestone1-baseline.md
+      expect(inputs.userMetrics.totalUsers).toBe(26); // All anonymous auth users
+      expect(inputs.userMetrics.activeUsers).toBe(6); // Users with saves
+      expect(inputs.userMetrics.actionsPerUserPerMonth).toBe(0); // UNKNOWN
+      expect(inputs.userMetrics.returnRate).toBe(0); // 0 confirmed returns
+      expect(inputs.revenue.monthlyRevenue).toBe(0); // Not monetized
+      expect(inputs.founderTime.hoursPerWeek).toBe(0); // UNKNOWN
+      
+      // Costs: ~$10 total since mid-Oct ($8.72 Nov Places + ~$1.25 Gemini)
+      const totalCost = inputs.agentTasks.reduce((sum, task) => sum + task.costUSD, 0);
+      expect(totalCost).toBeCloseTo(9.97, 2); // $8.72 + $1.25
+      
+      // Data source
+      expect(inputs.dataSource).toContain('milestone1-baseline.md');
+    });
+
     it('should produce "not_enough_evidence" verdict for Plum List', () => {
       const decision = evaluateBusiness(plumListBaseline.inputs);
       
       expect(decision.verdict).toBe('not_enough_evidence');
-      expect(decision.confidence).toBe('medium');
+      expect(decision.confidence).toBe('low');
       expect(decision.missingData).toBeDefined();
       expect(decision.missingData?.length).toBeGreaterThan(0);
+    });
+
+    it('should list all missing data for Plum List', () => {
+      const decision = evaluateBusiness(plumListBaseline.inputs);
+      
+      expect(decision.missingData).toContain('User engagement data (actions per user per month)');
+      expect(decision.missingData).toContain('Contribution margin (revenue after variable costs)');
+      expect(decision.missingData).toContain('Founder time investment (hours per week)');
     });
 
     it('should recommend free tier with cost cap for Plum List', () => {
@@ -37,8 +64,10 @@ describe('Bureau Decision Engine', () => {
     it('should calculate cost per user for Plum List', () => {
       const decision = evaluateBusiness(plumListBaseline.inputs);
       
-      expect(decision.breakEvenMetrics.costPerUser).toBeGreaterThan(0);
+      // Cost per user is 0 because all costs are one-time, not recurring
+      expect(decision.breakEvenMetrics.costPerUser).toBe(0);
       expect(decision.breakEvenMetrics.costPerTask).toBeDefined();
+      expect(Object.keys(decision.breakEvenMetrics.costPerTask).length).toBeGreaterThan(0);
     });
 
     it('should include agent action briefs for Plum List', () => {
@@ -150,7 +179,7 @@ describe('Bureau Decision Engine', () => {
       const userFact = decision.keyFacts.find(f => f.label === 'User Base');
       
       expect(userFact).toBeDefined();
-      expect(userFact?.value).toBe(15);
+      expect(userFact?.value).toBe(26); // Real baseline: 26 auth users
     });
 
     it('should include cost per user fact', () => {

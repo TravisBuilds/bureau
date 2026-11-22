@@ -1,21 +1,29 @@
 {
   "verdict": "not_enough_evidence",
-  "confidence": "medium",
+  "confidence": "low",
   "keyFacts": [
     {
       "label": "User Base",
-      "value": 15,
-      "interpretation": "8 active of 15 total",
+      "value": 26,
+      "interpretation": "6 active of 26 total",
       "inputs": [
         "userMetrics.totalUsers",
         "userMetrics.activeUsers"
       ]
     },
     {
+      "label": "User Engagement",
+      "value": "unknown",
+      "interpretation": "Actions per user per month: unknown",
+      "inputs": [
+        "userMetrics.actionsPerUserPerMonth"
+      ]
+    },
+    {
       "label": "Cost per User",
-      "value": "$2.72/month",
-      "interpretation": "Each user costs $2.72/month to serve",
-      "calculation": "Monthly costs: $40.75\nTotal users: 15\nCost per user: $2.72\nBreak-even price: $2.72/user/month",
+      "value": "unknown",
+      "interpretation": "Cannot calculate without usage data",
+      "calculation": "Monthly costs: $0.00\nTotal users: 26\nCost per user: $0.00\nBreak-even price: $0.00/user/month",
       "inputs": [
         "agentTasks",
         "servingCosts",
@@ -32,20 +40,18 @@
       ]
     },
     {
-      "label": "Monthly Burn",
-      "value": "$40.75",
-      "interpretation": "Losing $40.75/month",
-      "calculation": "Revenue ($0.00) - Costs ($-40.75)",
+      "label": "Total Costs to Date",
+      "value": "$9.97",
+      "interpretation": "One-time serving costs since launch",
+      "calculation": "Places API (Nov): $8.72\nGemini API (since mid-Oct): $1.25",
       "inputs": [
-        "revenue",
-        "agentTasks",
-        "servingCosts"
+        "agentTasks"
       ]
     },
     {
       "label": "Founder Time",
-      "value": "10h/week",
-      "interpretation": "Limited time investment",
+      "value": "unknown",
+      "interpretation": "Time investment not tracked",
       "inputs": [
         "founderTime.hoursPerWeek"
       ]
@@ -70,20 +76,21 @@
     "agentActionBrief": "Set up private beta: invite 10-20 users, implement usage tracking, measure per-user costs for 2 weeks."
   },
   "breakEvenMetrics": {
-    "costPerUser": 2.716666666666667,
+    "costPerUser": 0,
     "costPerTask": {
-      "Content Curation": 0.15,
-      "User Onboarding": 0.05,
-      "Weekly Content Updates": 2.5
+      "Places API (Nov)": 8.72,
+      "Gemini API (since mid-Oct)": 1.25
     },
-    "breakEvenPricePerUser": 2.716666666666667,
-    "monthlyBurnRate": 40.75,
-    "calculation": "Monthly costs: $40.75\nTotal users: 15\nCost per user: $2.72\nBreak-even price: $2.72/user/month"
+    "breakEvenPricePerUser": 0,
+    "monthlyBurnRate": 0,
+    "calculation": "Monthly costs: $0.00\nTotal users: 26\nCost per user: $0.00\nBreak-even price: $0.00/user/month"
   },
   "missingData": [
+    "User engagement data (actions per user per month)",
     "Revenue data or pricing model",
-    "Contribution margin (revenue after variable costs)"
+    "Contribution margin (revenue after variable costs)",
+    "Founder time investment (hours per week)"
   ],
-  "timestamp": "2026-11-22T02:35:37.493Z",
-  "agentActionBrief": "VERDICT: Insufficient data to make recommendation.\nPRIORITY: Collect missing data: Revenue data or pricing model, Contribution margin (revenue after variable costs)\nPRICING: Set up cost monitoring alerts at $40/month. Plan product validation tests with first 10-20 users.\nACCESS: Set up private beta: invite 10-20 users, implement usage tracking, measure per-user costs for 2 weeks."
+  "timestamp": "2026-11-22T02:40:02.406Z",
+  "agentActionBrief": "VERDICT: Insufficient data to make recommendation.\nPRIORITY: Collect missing data: User engagement data (actions per user per month), Revenue data or pricing model, Contribution margin (revenue after variable costs), Founder time investment (hours per week)\nPRICING: Set up cost monitoring alerts at $40/month. Plan product validation tests with first 10-20 users.\nACCESS: Set up private beta: invite 10-20 users, implement usage tracking, measure per-user costs for 2 weeks."
 }

@@ -10,6 +10,80 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code'); // PKCE flow
   const next = requestUrl.searchParams.get('next') || '/';
 
+  // If no query params, return HTML to handle implicit flow (hash fragment)
+  if (!token_hash && !type && !code) {
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Signing in...</title>
+  <style>
+    body { font-family: system-ui; max-width: 500px; margin: 100px auto; padding: 20px; text-align: center; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #7c3aed; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .error { color: #dc2626; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <p>Completing sign in...</p>
+  <div id="error" class="error" style="display:none;"></div>
+  <script>
+    (function() {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      const error = params.get('error');
+      const errorDesc = params.get('error_description');
+      const next = new URLSearchParams(window.location.search).get('next') || '/';
+      
+      if (error) {
+        document.getElementById('error').innerHTML = 
+          '<p><strong>Sign in failed:</strong> ' + (errorDesc || error) + '</p>' +
+          '<p><a href="/auth/signin">Try again</a></p>';
+        document.getElementById('error').style.display = 'block';
+        document.querySelector('.spinner').style.display = 'none';
+        document.querySelector('p').style.display = 'none';
+        return;
+      }
+      
+      if (accessToken && refreshToken) {
+        fetch('/auth/callback/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ accessToken, refreshToken, next })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.redirect) {
+            window.location.replace(data.redirect);
+          } else {
+            throw new Error(data.error || 'Unknown error');
+          }
+        })
+        .catch(err => {
+          document.getElementById('error').innerHTML = 
+            '<p><strong>Error:</strong> ' + err.message + '</p>' +
+            '<p><a href="/auth/signin">Try again</a></p>';
+          document.getElementById('error').style.display = 'block';
+          document.querySelector('.spinner').style.display = 'none';
+          document.querySelector('p').style.display = 'none';
+        });
+      } else {
+        window.location.replace('/auth/signin?error=missing-params');
+      }
+    })();
+  </script>
+</body>
+</html>`;
+    
+    return new NextResponse(html, {
+      headers: { 'Content-Type': 'text/html' },
+    });
+  }
+
   // Check if this is a Supabase auth callback (magic link or PKCE)
   if ((token_hash && type) || code) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -93,80 +167,11 @@ export async function GET(request: NextRequest) {
     const email = authData.user.email!;
 
     try {
-      // Note: DO NOT insert into auth.users - Supabase Auth owns that table
-      // Bureau only creates workspace/membership records
-
-      // Use withUser to set JWT claims for RLS
-      const { withUser, query } = await import('@/lib/db');
+      // Use shared post-login helper
+      const { handlePostLogin } = await import('@/lib/post-login');
+      const result = await handlePostLogin(userId, email, next);
       
-      // Read invite code from cookie
-      const inviteCode = cookieStore.get('bureau_invite')?.value;
-      
-      // Claim invite if provided
-      let inviteClaimed = false;
-      if (inviteCode) {
-        const claimResult = await query<{ claim_pilot_invite: boolean }>(
-          'SELECT bureau.claim_pilot_invite($1, $2) as claim_pilot_invite',
-          [inviteCode, userId]
-        );
-        inviteClaimed = claimResult[0]?.claim_pilot_invite || false;
-        
-        // Clear the cookie
-        cookieStore.delete('bureau_invite');
-      }
-      
-      const workspaceId = await withUser(userId, email, async (client) => {
-        // Check if user has a workspace
-        const workspaces = await client.query(
-          `SELECT w.id FROM bureau.workspaces w
-           JOIN bureau.workspace_members wm ON wm.workspace_id = w.id
-           WHERE wm.user_id = $1::uuid`,
-          [userId]
-        );
-
-        if (workspaces.rows.length === 0) {
-          // Check if user has a valid claimed invite
-          const invites = await client.query(
-            `SELECT code FROM bureau.pilot_invites 
-             WHERE claimed_by = $1
-             AND expires_at > NOW()`,
-            [userId]
-          );
-          
-          if (invites.rows.length === 0 && !inviteClaimed) {
-            // No workspace and no valid invite - redirect to invite required page
-            throw new Error('INVITE_REQUIRED');
-          }
-          
-          // Create workspace using SECURITY DEFINER function
-          const workspaceName = `${email.split('@')[0]}'s Workspace`;
-          const result = await client.query(
-            'SELECT bureau.bootstrap_workspace($1, $2) as workspace_id',
-            [workspaceName, email]
-          );
-          return result.rows[0].workspace_id;
-        }
-
-        return workspaces.rows[0].id;
-      });
-
-      // Check if this was a new workspace (redirect to onboarding)
-      const isNew = await withUser(userId, email, async (client) => {
-        const result = await client.query(
-          `SELECT signup_completed_at FROM bureau.onboarding_progress 
-           WHERE workspace_id = $1 
-           AND signup_completed_at > NOW() - INTERVAL '1 minute'`,
-          [workspaceId]
-        );
-        return result.rows.length > 0;
-      });
-
-      if (isNew) {
-        return NextResponse.redirect(new URL('/onboarding', request.url));
-      }
-
-      // User has workspace, go to top floor
-      return NextResponse.redirect(new URL(next === '/' ? '/top-floor' : next, request.url));
+      return NextResponse.redirect(new URL(result.redirect, request.url));
     } catch (error) {
       if (error instanceof Error && error.message === 'INVITE_REQUIRED') {
         return NextResponse.redirect(

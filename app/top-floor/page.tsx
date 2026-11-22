@@ -13,6 +13,10 @@ export default function TopFloorPage() {
   const [monthlyNeed, setMonthlyNeed] = useState<number | null>(null);
   const [showNeedDialog, setShowNeedDialog] = useState(false);
 
+  // Exclude SAMPLE streams from Travis's real totals
+  const realStreams = streams.filter(s => !s.id.includes('sample'));
+  const connectedRealStreams = realStreams.filter(s => s.connected);
+
   // Calculate totals from connected REAL streams only (exclude SAMPLE)
   const totalIncome = connectedRealStreams.reduce((sum, s) => sum + (s.monthlyIncome || 0), 0);
   const totalCosts = connectedRealStreams.reduce((sum, s) => sum + (s.monthlyCosts || 0), 0);
@@ -54,10 +58,6 @@ export default function TopFloorPage() {
       }
     }
   };
-
-  // Exclude SAMPLE streams from Travis's real totals
-  const realStreams = streams.filter(s => !s.id.includes('sample'));
-  const connectedRealStreams = realStreams.filter(s => s.connected);
 
   return (
     <div className="min-h-screen bg-white">

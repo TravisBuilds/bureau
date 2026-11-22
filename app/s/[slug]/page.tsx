@@ -7,13 +7,6 @@ import { generateSampleBakeryAuditTrail, SAMPLE_BAKERY_PITCH } from '@/lib/sampl
 import { DEFAULT_SHARE_SETTINGS } from '@/lib/audit-types';
 import { getTotalIncome, getTotalCosts, getDecisionHistory } from '@/lib/audit-types';
 
-export async function generateStaticParams() {
-  return [
-    { slug: 'sample-corner-bakery' },
-    { slug: 'plum-list' },
-  ];
-}
-
 export default function PublicStreamPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   

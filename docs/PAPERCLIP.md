@@ -3,13 +3,21 @@
 **Date:** November 22, 2026  
 **Purpose:** Evaluate whether Bureau should run ON Paperclip or reimplement its patterns
 
-## Philosophical Difference: Startups vs Solopreneurs
+## Philosophical Difference: Startups vs Small Teams
 
-**Paperclip is for startups.** It frames work as companies trying to scale: CEO agents, org charts, corporate goals like "$1M MRR", hiring teams.
+**Paperclip is for startups.** It frames work as companies trying to scale: CEO agents, org charts, corporate goals like "$1M MRR", hiring teams, raising capital.
 
-**Bureau is for solopreneurs with day jobs.** People turning passions into income streams. The founder is the only person. Agents are helpers. The scarce resources are the founder's hours and money. Goals are personal: "cover my costs", "make $500/month side income", "learn if anyone wants this".
+**Bureau is for solopreneurs and tiny teams (1-3 people).** People turning passions into income streams, often with a day job. Most streams have one person. Some have 2-3 collaborators. Agents are helpers. The scarce resources are each person's hours and their shared money. Goals are personal: "cover my costs", "make $500/month side income", "learn if anyone wants this".
 
 This philosophical difference shapes what we borrow from Paperclip and what we skip.
+
+### Team Size: 1-3 People
+
+**Default:** One founder. No team clutter in the UI.
+
+**When a second person joins:** Show "Team" section with members (name, role, time available, approval rights). Tasks assignable to person OR helper agent. Time tracking per person.
+
+**What we DON'T support:** Departments, complex hierarchy, 10+ person teams, manager/report chains. If you need that, use Paperclip.
 
 ## Paperclip Core Concepts (What We Borrow)
 

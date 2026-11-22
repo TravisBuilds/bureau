@@ -30,6 +30,11 @@
   --color-silver: var(--highstreet-silver);
   --color-dark: var(--highstreet-dark-gray);
   
+  /* Highstreet utilities for Tailwind classes */
+  --color-highstreet-purple: #6253F1;
+  --color-highstreet-purple-hover: #5443D1;
+  --color-highstreet-cyan: #00f2fe;
+  
   /* Status colors */
   --color-success: #10b981;
   --color-warning: #f59e0b;

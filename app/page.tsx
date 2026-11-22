@@ -1,10 +1,5 @@
-import AppLayout from "@/components/AppLayout";
-import PortfolioPageCompact from "@/components/PortfolioPageCompact";
+import { redirect } from 'next/navigation';
 
 export default function Home() {
-  return (
-    <AppLayout>
-      <PortfolioPageCompact />
-    </AppLayout>
-  );
+  redirect('/top-floor');
 }

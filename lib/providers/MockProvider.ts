@@ -10,6 +10,7 @@ import {
   TaskDispatchResult,
   AgentTask,
 } from '../agent-provider-interface';
+import { IntakeResponse, StreamType } from '../intake-types';
 
 // In-memory task storage for mock
 const mockTasks = new Map<string, AgentTask>();
@@ -162,5 +163,116 @@ export class MockProvider implements AgentProvider {
     mockConversations.get(convId)!.push(response);
     
     return { messageId, response };
+  }
+  
+  async requestIntake(
+    streamId: string,
+    streamType: StreamType,
+    credentials?: AgentCredentials
+  ): Promise<IntakeResponse> {
+    // Return SAMPLE data clearly labeled
+    if (streamType === 'day-job') {
+      return {
+        streamId,
+        streamType: 'day-job',
+        data: {
+          employer: 'SAMPLE Tech Corp',
+          role: 'SAMPLE Senior Designer',
+          payType: 'salary',
+          annualSalary: 95000,
+          payFrequency: 'biweekly',
+          hoursPerWeek: 40,
+          recentPayStubs: [
+            {
+              date: '2026-11-15',
+              grossPay: 3653.85,
+              netPay: 2680.00,
+              period: '2026-11-01 to 2026-11-15',
+            },
+            {
+              date: '2026-10-31',
+              grossPay: 3653.85,
+              netPay: 2680.00,
+              period: '2026-10-16 to 2026-10-31',
+            },
+          ],
+          benefits: ['SAMPLE Health insurance', 'SAMPLE 401k match (3%)'],
+        },
+        dataSource: 'Mock Agent Alpha (SAMPLE DATA - not real)',
+        asOf: new Date().toISOString(),
+        requiresReview: true,
+      };
+    }
+    
+    if (streamType === 'contract') {
+      return {
+        streamId,
+        streamType: 'contract',
+        data: {
+          clients: [
+            {
+              name: 'SAMPLE Startup Inc',
+              hourlyRate: 125,
+              isActive: true,
+            },
+            {
+              name: 'SAMPLE Agency Co',
+              hourlyRate: 150,
+              isActive: false,
+            },
+          ],
+          recentInvoices: [
+            {
+              id: 'INV-001',
+              clientName: 'SAMPLE Startup Inc',
+              amount: 3750,
+              dateIssued: '2026-11-01',
+              dateDue: '2026-11-15',
+              datePaid: '2026-11-14',
+              status: 'paid',
+              hoursWorked: 30,
+            },
+            {
+              id: 'INV-002',
+              clientName: 'SAMPLE Startup Inc',
+              amount: 2500,
+              dateIssued: '2026-11-15',
+              dateDue: '2026-11-29',
+              status: 'sent',
+              hoursWorked: 20,
+            },
+          ],
+          monthlyHours: 50,
+        },
+        dataSource: 'Mock Agent Beta (SAMPLE DATA - not real)',
+        asOf: new Date().toISOString(),
+        requiresReview: true,
+      };
+    }
+    
+    // Project type
+    return {
+      streamId,
+      streamType: 'project',
+      data: {
+        users: { total: 26, active: 6, growth: '+0 this week' },
+        revenue: { total: 0, thisMonth: 0, trend: 'no revenue yet' },
+        costs: [
+          { service: 'Google Places API', amount: 8.72, period: 'monthly' },
+          { service: 'Gemini API', amount: 1.25, period: 'monthly' },
+        ],
+        metrics: [
+          { name: 'Saves', value: 633, unit: 'total', trend: '+0 today' },
+          { name: 'Return rate', value: 0, unit: '%', trend: 'unknown' },
+        ],
+        decisions: [
+          { title: 'Fix return tracking', priority: 1, timeAsk: '15 min', signal: 'push' },
+          { title: 'Push 4 unpushed syncs', priority: 2, timeAsk: '10 min', signal: 'push' },
+        ],
+      },
+      dataSource: 'Mock Agent (Real project data, not SAMPLE)',
+      asOf: new Date().toISOString(),
+      requiresReview: true,
+    };
   }
 }

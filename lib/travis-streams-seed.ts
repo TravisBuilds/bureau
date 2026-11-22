@@ -1,11 +1,14 @@
 /**
- * Travis's Real Income Streams (7 total)
+ * Travis's Real Income Streams (7 projects, 0 day-jobs, 0 contracts)
  * User #1: Someone with many streams, checks in briefly from day job
  */
+
+export type StreamType = 'day-job' | 'contract' | 'project';
 
 export interface IncomeStream {
   id: string;
   name: string;
+  type: StreamType;
   description: string;
   agents: Array<{
     name: string;
@@ -18,16 +21,23 @@ export interface IncomeStream {
   signal?: 'push' | 'keep' | 'pause' | 'kill';
   signalReason?: string;
   
-  // Metrics (only if connected)
+  // Financial metrics (all types)
+  monthlyIncome?: number;
+  monthlyCosts?: number;
+  monthlyHours?: number;
+  
+  // Project-specific metrics
   users?: number;
-  earnings?: number;
-  spending?: number;
   needsYou?: number;
   timeAskedHours?: number;
   
   // Activity
   lastActivity?: string;
   status: 'active' | 'paused' | 'not-connected';
+  
+  // Data freshness
+  dataSource?: string;
+  dataAsOf?: string;
 }
 
 export const travisStreams: IncomeStream[] = [
@@ -35,6 +45,7 @@ export const travisStreams: IncomeStream[] = [
   {
     id: 'plum-list',
     name: 'Plum List',
+    type: 'project',
     description: 'Restaurant saves from influencer reels',
     agents: [
       { name: 'Plumlist Agent', role: 'Product & Ops', connected: true },
@@ -43,18 +54,21 @@ export const travisStreams: IncomeStream[] = [
     signal: 'push',
     signalReason: 'Critical blocker: return tracking not measurable',
     users: 26,
-    earnings: 0,
-    spending: 9.97,
+    monthlyIncome: 0,
+    monthlyCosts: 9.97,
     needsYou: 1,
     timeAskedHours: 0.75, // 45 min total from 3 actions
     lastActivity: '2 hours ago',
     status: 'active',
+    dataSource: 'Plumlist Agent',
+    dataAsOf: new Date().toISOString(),
   },
   
   // 2. DuckDuckGoose - NOT CONNECTED
   {
     id: 'duckduckgoose',
     name: 'DuckDuckGoose',
+    type: 'project',
     description: 'Video-episode studio / Hands-Free Video Generator',
     agents: [
       { name: 'DuckDuckGoose Agent', role: 'Video Production', connected: false },
@@ -68,6 +82,7 @@ export const travisStreams: IncomeStream[] = [
   {
     id: 'bedtime-ember',
     name: 'Bedtime with Ember / Yellow Duck Labs',
+    type: 'project',
     description: "Kids' generative content",
     agents: [
       { name: 'Ember Agent', role: 'Content Creation', connected: false },
@@ -82,6 +97,7 @@ export const travisStreams: IncomeStream[] = [
   {
     id: 'peak-glow-up',
     name: 'Quacked Concierge Peak Glow Up',
+    type: 'project',
     description: 'Dome resort IP content',
     agents: [
       { name: 'Studio Peak Glow Up Agent', role: 'Content Studio', connected: false },
@@ -95,6 +111,7 @@ export const travisStreams: IncomeStream[] = [
   {
     id: 'offkey',
     name: 'Offkey',
+    type: 'project',
     description: 'Mobile karaoke app offkey.fm',
     agents: [
       { name: 'Offkey PM Agent', role: 'Product Management', connected: false },
@@ -108,6 +125,7 @@ export const travisStreams: IncomeStream[] = [
   {
     id: 'starringyou',
     name: 'StarringYou',
+    type: 'project',
     description: 'Chrome extension for friends and family',
     agents: [
       { name: 'StarringYou Agent', role: 'Extension Dev', connected: false },
@@ -121,6 +139,7 @@ export const travisStreams: IncomeStream[] = [
   {
     id: 'bureau',
     name: 'Bureau',
+    type: 'project',
     description: 'Command center for solopreneurs with AI helpers',
     agents: [
       { name: 'Bureau Agent', role: 'Product & Design', connected: false },
@@ -135,14 +154,14 @@ export const travisStreams: IncomeStream[] = [
  * Portfolio rollup (only connected streams with data)
  */
 export function getPortfolioRollup(streams: IncomeStream[]) {
-  const connectedStreams = streams.filter(s => s.connected && s.spending !== undefined);
+  const connectedStreams = streams.filter(s => s.connected && s.monthlyCosts !== undefined);
   
   return {
     totalStreams: streams.length,
     connectedStreams: connectedStreams.length,
     totalUsers: connectedStreams.reduce((sum, s) => sum + (s.users || 0), 0),
-    totalEarnings: connectedStreams.reduce((sum, s) => sum + (s.earnings || 0), 0),
-    totalSpending: connectedStreams.reduce((sum, s) => sum + (s.spending || 0), 0),
+    totalIncome: connectedStreams.reduce((sum, s) => sum + (s.monthlyIncome || 0), 0),
+    totalCosts: connectedStreams.reduce((sum, s) => sum + (s.monthlyCosts || 0), 0),
     needsYou: connectedStreams.reduce((sum, s) => sum + (s.needsYou || 0), 0),
     timeAskedHours: connectedStreams.reduce((sum, s) => sum + (s.timeAskedHours || 0), 0),
   };

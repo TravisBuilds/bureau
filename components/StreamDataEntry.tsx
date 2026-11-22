@@ -238,6 +238,10 @@ function ContractForm({ onSubmit }: { onSubmit: (data: any) => void }) {
     clientName: '',
     hourlyRate: '',
     monthlyHours: '',
+    // Invoice fields
+    invoiceAmount: '',
+    invoiceStatus: 'sent' as 'draft' | 'sent' | 'paid' | 'overdue',
+    invoiceDate: '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -249,6 +253,14 @@ function ContractForm({ onSubmit }: { onSubmit: (data: any) => void }) {
         isActive: true,
       }],
       monthlyHours: Number(formData.monthlyHours),
+      recentInvoices: formData.invoiceAmount ? [{
+        id: `INV-${Date.now()}`,
+        clientName: formData.clientName,
+        amount: Number(formData.invoiceAmount),
+        dateIssued: formData.invoiceDate || new Date().toISOString().split('T')[0],
+        dateDue: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: formData.invoiceStatus,
+      }] : [],
     });
   };
 
@@ -293,9 +305,61 @@ function ContractForm({ onSubmit }: { onSubmit: (data: any) => void }) {
         />
       </div>
 
+      {/* Recent Invoice (optional) */}
+      <div className="pt-4 border-t border-slate-200">
+        <h3 className="text-sm font-medium text-slate-900 mb-4">Most Recent Invoice (optional)</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Invoice Amount
+            </label>
+            <input
+              type="number"
+              value={formData.invoiceAmount}
+              onChange={(e) => setFormData({ ...formData, invoiceAmount: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-highstreet-purple focus:border-transparent"
+              placeholder="Leave blank to skip"
+            />
+          </div>
+
+          {formData.invoiceAmount && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Invoice Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.invoiceDate}
+                  onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-highstreet-purple focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Status
+                </label>
+                <select
+                  value={formData.invoiceStatus}
+                  onChange={(e) => setFormData({ ...formData, invoiceStatus: e.target.value as any })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-highstreet-purple focus:border-transparent"
+                >
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
       <button
         type="submit"
-        className="w-full px-6 py-3 bg-highstreet-purple text-white rounded-lg hover:bg-opacity-90 transition-colors font-medium"
+        className="w-full px-6 py-3 bg-highstreet-purple text-white rounded-lg hover:bg-highstreet-purple-hover transition-colors font-medium"
       >
         Add Contract
       </button>

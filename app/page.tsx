@@ -1,10 +1,10 @@
 import AppLayout from "@/components/AppLayout";
-import PortfolioPage from "@/components/PortfolioPage";
+import PortfolioPageCompact from "@/components/PortfolioPageCompact";
 
 export default function Home() {
   return (
     <AppLayout>
-      <PortfolioPage />
+      <PortfolioPageCompact />
     </AppLayout>
   );
 }

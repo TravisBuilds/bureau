@@ -349,12 +349,13 @@ export async function pollDeviceCode(
     user_id: string | null;
     workspace_id: string | null;
     scopes: string[];
+    client_name: string;
     agent_label: string | null;
     stream_ids: string[] | null;
     allow_create_streams: boolean;
     expires_at: Date;
   }>(
-    `SELECT * FROM bureau.oauth_device_codes WHERE device_code_hash = $1`,
+    `SELECT * FROM bureau.poll_device_code($1)`,
     [deviceCodeHash]
   );
   

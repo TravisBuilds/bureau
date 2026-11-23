@@ -120,21 +120,27 @@ CREATE OR REPLACE FUNCTION bureau.revoke_oauth_token(
 ) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, pg_temp
+SET search_path = bureau, extensions, pg_temp
 AS $$
 DECLARE
-  v_revoked boolean := false;
+  v_token_hash text;
+  v_row_count bigint;
 BEGIN
-  -- Revoke only if caller owns the token (workspace + user match)
-  UPDATE oauth_tokens
-  SET revoked_at = now()
-  WHERE (token = p_token OR refresh_token = p_token)
-    AND user_id = p_user_id
-    AND workspace_id = p_workspace_id
-    AND revoked_at IS NULL;
+  -- Hash the provided token
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
   
-  GET DIAGNOSTICS v_revoked = ROW_COUNT;
-  RETURN v_revoked > 0;
+  -- Revoke only if caller owns the token (via grant ownership check)
+  UPDATE oauth_tokens t
+  SET revoked_at = now()
+  FROM oauth_grants g
+  WHERE t.grant_id = g.id
+    AND t.token_hash = v_token_hash
+    AND g.user_id = p_user_id
+    AND g.workspace_id = p_workspace_id
+    AND t.revoked_at IS NULL;
+  
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  RETURN v_row_count > 0;
 END;
 $$;
 
@@ -168,6 +174,9 @@ CREATE OR REPLACE FUNCTION bureau.poll_device_code(
   workspace_id uuid,
   client_name text,
   scopes text[],
+  agent_label text,
+  stream_ids uuid[],
+  allow_create_streams boolean,
   status text,
   expires_at timestamptz
 )
@@ -182,6 +191,9 @@ BEGIN
     dc.workspace_id,
     dc.client_name,
     dc.scopes,
+    dc.agent_label,
+    dc.stream_ids,
+    dc.allow_create_streams,
     dc.status,
     dc.expires_at
   FROM oauth_device_codes dc

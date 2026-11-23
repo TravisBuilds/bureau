@@ -18,6 +18,24 @@ export default async function TopFloorPage() {
 
   // Fetch real workspace data
   const data = await withUser(user.id, user.email, async (client) => {
+    // Get decisions due for review
+    const decisionsResult = await client.query(
+      `SELECT 
+        d.id,
+        d.title,
+        d.review_date,
+        d.metric_name,
+        s.name as stream_name
+       FROM bureau.decisions d
+       LEFT JOIN bureau.streams s ON s.id = d.stream_id
+       WHERE d.workspace_id = $1
+       AND d.verdict = 'pending'
+       AND d.review_date <= CURRENT_DATE
+       ORDER BY d.review_date ASC
+       LIMIT 5`,
+      [user.workspaceId]
+    );
+
     // Get streams with per-stream costs, log counts, and recent activity
     const streamsResult = await client.query(
       `SELECT 
@@ -82,6 +100,7 @@ export default async function TopFloorPage() {
       streams: streamsResult.rows,
       recentLogs: logsResult.rows,
       tokensCount: parseInt(tokensResult.rows[0].count),
+      dueDecisions: decisionsResult.rows,
     };
   });
 
@@ -89,6 +108,7 @@ export default async function TopFloorPage() {
     streams={data.streams} 
     recentLogs={data.recentLogs}
     tokensCount={data.tokensCount}
+    dueDecisions={data.dueDecisions}
     userEmail={user.email}
   />;
 }

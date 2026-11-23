@@ -1,8 +1,8 @@
 'use client';
 
-import { Building2, Shield, AlertCircle, Plus, Key } from 'lucide-react';
+import { Building2, Shield, AlertCircle, Plus, Key, Clock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 
 interface Stream {
   id: string;
@@ -22,10 +22,19 @@ interface IngestLog {
   stream_name: string;
 }
 
+interface DueDecision {
+  id: string;
+  title: string;
+  review_date: string;
+  metric_name: string;
+  stream_name: string | null;
+}
+
 interface TopFloorPageContentProps {
   streams: Stream[];
   recentLogs: IngestLog[];
   tokensCount: number;
+  dueDecisions: DueDecision[];
   userEmail: string;
 }
 
@@ -33,6 +42,7 @@ export default function TopFloorPageContent({
   streams, 
   recentLogs, 
   tokensCount,
+  dueDecisions,
   userEmail 
 }: TopFloorPageContentProps) {
   const router = useRouter();
@@ -55,6 +65,13 @@ export default function TopFloorPageContent({
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.push('/decisions')}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                <Clock className="w-4 h-4" />
+                Decisions
+              </button>
               <button
                 onClick={() => router.push('/connections')}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
@@ -91,6 +108,48 @@ export default function TopFloorPageContent({
                 <Plus className="w-5 h-5" />
                 Setup Walkthrough
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Decisions Due for Review */}
+        {dueDecisions.length > 0 && (
+          <div className="mb-12">
+            <div className="p-6 bg-amber-50 border-2 border-amber-300 rounded-lg">
+              <div className="flex items-start gap-4">
+                <div className="p-2 bg-amber-100 rounded-lg">
+                  <Clock className="w-6 h-6 text-amber-700" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                    {dueDecisions.length} Decision{dueDecisions.length > 1 ? 's' : ''} Due for Review
+                  </h3>
+                  <div className="space-y-2 mb-4">
+                    {dueDecisions.slice(0, 3).map((decision) => (
+                      <div key={decision.id} className="text-sm text-slate-700">
+                        <span className="font-medium">{decision.title}</span>
+                        {decision.stream_name && (
+                          <span className="text-slate-500 ml-2">({decision.stream_name})</span>
+                        )}
+                        <span className="text-slate-500 ml-2">
+                          • Due {format(new Date(decision.review_date), 'MMM d')}
+                        </span>
+                      </div>
+                    ))}
+                    {dueDecisions.length > 3 && (
+                      <div className="text-sm text-slate-500">
+                        +{dueDecisions.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => router.push('/decisions')}
+                    className="px-4 py-2 text-sm font-medium text-amber-900 bg-amber-100 rounded-lg hover:bg-amber-200"
+                  >
+                    Review Decisions
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

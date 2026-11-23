@@ -24,7 +24,7 @@ import { query, execute } from '@/lib/db';
  */
 
 interface IngestPayload {
-  type: 'intake' | 'cost' | 'metric' | 'finding';
+  type: 'intake' | 'cost' | 'metric' | 'finding' | 'decision';
   stream?: string; // stream name or ID
   content: string;
   metadata?: Record<string, any>;
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
     
     // 3. Validate required fields and type
-    const validTypes = ['intake', 'cost', 'metric', 'finding'];
+    const validTypes = ['intake', 'cost', 'metric', 'finding', 'decision'];
     
     if (!payload.type || !payload.content) {
       return NextResponse.json({ 
@@ -88,6 +88,16 @@ export async function POST(request: NextRequest) {
         error: `Invalid type. Must be one of: ${validTypes.join(', ')}` 
       }, { status: 400 });
     }
+
+    // Validate decision-specific fields
+    if (payload.type === 'decision') {
+      const { title, action, metric_name, review_date } = payload.metadata || {};
+      if (!title || !action || !metric_name || !review_date) {
+        return NextResponse.json({
+          error: 'Decision type requires metadata: title, action, metric_name, review_date'
+        }, { status: 400 });
+      }
+    }
     
     // Validate stream name length
     if (payload.stream && payload.stream.length > 100) {
@@ -99,7 +109,7 @@ export async function POST(request: NextRequest) {
     // 4. Run queries with proper user context
     const { withUser } = await import('@/lib/db');
     
-    const { streamId, ingestLogId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
+    const { streamId, ingestLogId, decisionId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
       // Look up or create stream by name or ID
       let streamId: string | null = null;
       
@@ -161,6 +171,32 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      // Handle decision type - create decision record
+      let decisionId: string | null = null;
+      if (payload.type === 'decision') {
+        const { title, action, metric_name, baseline_value, baseline_unit, review_date } = payload.metadata || {};
+        
+        const decisionRows = await client.query(
+          `INSERT INTO bureau.decisions (
+            workspace_id, stream_id, title, action, metric_name,
+            baseline_value, baseline_unit, review_date, created_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING id`,
+          [
+            tokenInfo.workspace_id,
+            streamId || null,
+            title,
+            action,
+            metric_name,
+            baseline_value || null,
+            baseline_unit || null,
+            review_date,
+            tokenInfo.user_id
+          ]
+        );
+        decisionId = decisionRows.rows[0].id;
+      }
+
       // Log ingest using SECURITY DEFINER function
       const fullPayload = {
         type: payload.type,
@@ -168,6 +204,7 @@ export async function POST(request: NextRequest) {
         stream_id: streamId,
         content: payload.content,
         metadata: payload.metadata || {},
+        decision_id: decisionId,
         received_at: new Date().toISOString()
       };
       
@@ -182,7 +219,8 @@ export async function POST(request: NextRequest) {
       
       return {
         streamId,
-        ingestLogId: logRows.rows[0].id
+        ingestLogId: logRows.rows[0].id,
+        decisionId
       };
     });
     
@@ -193,6 +231,7 @@ export async function POST(request: NextRequest) {
       success: true,
       ingest_id: ingestLogId,
       stream_id: streamId,
+      decision_id: decisionId,
       status: 'pending'
     });
     
@@ -236,7 +275,7 @@ export async function GET() {
         views: 34
       }
     },
-    types: ['intake', 'cost', 'metric', 'finding'],
+    types: ['intake', 'cost', 'metric', 'finding', 'decision'],
     docs: 'https://github.com/TravisBuilds/bureau/blob/main/docs/BUREAU.md'
   });
 }

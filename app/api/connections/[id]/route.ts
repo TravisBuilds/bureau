@@ -18,7 +18,7 @@ export async function DELETE(
     
     const connectionId = params.id;
     
-    // Revoke grant (cascades to tokens and agent_links via ON DELETE CASCADE)
+    // Revoke grant (resolve_credential checks grant status, so this effectively invalidates all tokens)
     await query(
       `UPDATE bureau.oauth_grants
        SET status = 'revoked', revoked_at = NOW(), revoked_reason = 'User revoked'
@@ -26,13 +26,8 @@ export async function DELETE(
       [connectionId, user.workspaceId, user.id]
     );
     
-    // Revoke all tokens in the grant
-    await query(
-      `UPDATE bureau.oauth_tokens
-       SET revoked_at = NOW()
-       WHERE grant_id = $1`,
-      [connectionId]
-    );
+    // Note: We don't directly UPDATE oauth_tokens (no table access)
+    // The revoked grant status is checked by resolve_credential, invalidating all tokens
     
     // Revoke agent links
     await query(

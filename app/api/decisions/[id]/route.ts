@@ -8,9 +8,10 @@ import { getAuthUser } from '@/lib/auth-helpers';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getAuthUser();
     if (!user || !user.workspaceId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,7 +26,7 @@ export async function GET(
         FROM bureau.decisions d
         LEFT JOIN bureau.streams s ON s.id = d.stream_id
         WHERE d.id = $1 AND d.workspace_id = $2`,
-        [params.id, user.workspaceId]
+        [id, user.workspaceId]
       );
 
       return result.rows[0] || null;
@@ -48,9 +49,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getAuthUser();
     if (!user || !user.workspaceId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -72,7 +74,7 @@ export async function PATCH(
       // Check decision exists and belongs to user's workspace
       const checkResult = await client.query(
         `SELECT id FROM bureau.decisions WHERE id = $1 AND workspace_id = $2`,
-        [params.id, user.workspaceId]
+        [id, user.workspaceId]
       );
 
       if (checkResult.rows.length === 0) {
@@ -111,7 +113,7 @@ export async function PATCH(
         throw new Error('NO_UPDATES');
       }
 
-      values.push(params.id, user.workspaceId);
+      values.push(id, user.workspaceId);
 
       const result = await client.query(
         `UPDATE bureau.decisions 
@@ -147,9 +149,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getAuthUser();
     if (!user || !user.workspaceId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -160,7 +163,7 @@ export async function DELETE(
         `DELETE FROM bureau.decisions 
          WHERE id = $1 AND workspace_id = $2
          RETURNING id`,
-        [params.id, user.workspaceId]
+        [id, user.workspaceId]
       );
 
       if (result.rows.length === 0) {

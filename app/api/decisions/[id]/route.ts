@@ -12,6 +12,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return NextResponse.json({ error: 'Invalid decision ID format' }, { status: 404 });
+    }
+    
     const user = await getAuthUser();
     if (!user || !user.workspaceId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -53,6 +60,13 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return NextResponse.json({ error: 'Invalid decision ID format' }, { status: 404 });
+    }
+    
     const user = await getAuthUser();
     if (!user || !user.workspaceId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -153,6 +167,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return NextResponse.json({ error: 'Invalid decision ID format' }, { status: 404 });
+    }
+    
     const user = await getAuthUser();
     if (!user || !user.workspaceId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

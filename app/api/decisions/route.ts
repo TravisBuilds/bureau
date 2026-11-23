@@ -19,6 +19,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const dueOnly = searchParams.get('due') === 'true';
     const streamId = searchParams.get('stream_id');
+    
+    // Validate stream_id if provided
+    if (streamId) {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(streamId)) {
+        return NextResponse.json({ error: 'Invalid stream_id format' }, { status: 400 });
+      }
+    }
 
     const decisions = await withUser(user.id, user.email, async (client) => {
       let query = `
@@ -102,6 +110,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate stream_id if provided
+    if (stream_id) {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(stream_id)) {
+        return NextResponse.json({ error: 'Invalid stream_id format' }, { status: 400 });
+      }
+    }
+    
     const decision = await withUser(user.id, user.email, async (client) => {
       // If stream_id provided, verify it exists and belongs to workspace
       if (stream_id) {

@@ -20,7 +20,7 @@ CREATE OR REPLACE FUNCTION bureau.store_auth_code(
   p_resource text,
   p_scopes text[],
   p_agent_label text,
-  p_stream_ids text[],
+  p_stream_ids uuid[],
   p_allow_create_streams boolean,
   p_expires_at timestamptz
 ) RETURNS void
@@ -54,7 +54,7 @@ CREATE OR REPLACE FUNCTION bureau.consume_auth_code(
   resource text,
   scopes text[],
   agent_label text,
-  stream_ids text[],
+  stream_ids uuid[],
   allow_create_streams boolean,
   consumed_at timestamptz
 )
@@ -62,6 +62,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = bureau, pg_temp
 AS $$
+#variable_conflict use_column
 DECLARE
   v_code_row RECORD;
 BEGIN

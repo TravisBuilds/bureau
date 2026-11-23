@@ -28,16 +28,24 @@ async function runTests() {
     await adminQuery(`INSERT INTO bureau.workspaces (id, name, created_by) VALUES ($1, 'Workspace 1', $2), ($3, 'Workspace 2', $4)`, [workspaceId1, userId1, workspaceId2, userId2]);
     await adminQuery(`INSERT INTO bureau.workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner'), ($3, $4, 'owner')`,
       [workspaceId1, userId1, workspaceId2, userId2]);
+    await adminQuery(`INSERT INTO bureau.oauth_clients (client_id, client_name, redirect_uris, registration, vendor, verified) 
+                      VALUES ('test_client', 'Test Client', ARRAY['https://example.com/callback'], 'static', 'other', false)`);
     
     // Test 1: Connection revoke makes tokens stop working
     console.log('1️⃣  Connection revoke invalidates tokens immediately\n');
     
-    // Create grant + tokens as admin
+    // Create grant + agent_link + tokens as admin
     const grantId1 = crypto.randomUUID();
+    const agentLinkId1 = crypto.randomUUID();
     await adminQuery(
       `INSERT INTO bureau.oauth_grants (id, workspace_id, user_id, client_id, vendor, scopes, status)
        VALUES ($1, $2, $3, 'test_client', 'other', ARRAY['ingest:write'], 'active')`,
       [grantId1, workspaceId1, userId1]
+    );
+    await adminQuery(
+      `INSERT INTO bureau.agent_links (id, grant_id, agent_label, stream_ids, allow_create_streams, scopes)
+       VALUES ($1, $2, 'Test Agent', ARRAY[]::uuid[], true, ARRAY['ingest:write'])`,
+      [agentLinkId1, grantId1]
     );
     
     const accessToken1 = `bureau_at_${crypto.randomBytes(32).toString('hex')}`;
@@ -57,9 +65,10 @@ async function runTests() {
       `SELECT workspace_id FROM bureau.resolve_credential($1)`,
       [accessToken1]
     );
-    console.log(`   ✅ Before revoke: token resolves to workspace ${beforeRevoke.rows.length > 0 ? '(valid)' : '(invalid)'}`);
+    console.log(`   ${beforeRevoke.rows.length > 0 ? '✅' : '❌'} Before revoke: token resolves to workspace ${beforeRevoke.rows.length > 0 ? '(valid)' : '(invalid)'}`);
     
     if (beforeRevoke.rows.length === 0) {
+      console.log(`   Debug: grant_id=${grantId1}, token_hash=${at1Hash.substring(0, 16)}...`);
       console.log('   ❌ FAIL: Token should work before revoke\n');
       process.exit(1);
     }
@@ -104,12 +113,18 @@ async function runTests() {
     // Test 2: Cross-workspace token revocation blocked
     console.log('2️⃣  Cross-workspace token revocation blocked\n');
     
-    // Create grant + token for workspace 1
+    // Create grant + agent_link + token for workspace 1
     const grantId2 = crypto.randomUUID();
+    const agentLinkId2 = crypto.randomUUID();
     await adminQuery(
       `INSERT INTO bureau.oauth_grants (id, workspace_id, user_id, client_id, vendor, scopes, status)
        VALUES ($1, $2, $3, 'test_client', 'other', ARRAY['ingest:write'], 'active')`,
       [grantId2, workspaceId1, userId1]
+    );
+    await adminQuery(
+      `INSERT INTO bureau.agent_links (id, grant_id, agent_label, stream_ids, allow_create_streams, scopes)
+       VALUES ($1, $2, 'Test Agent 2', ARRAY[]::uuid[], true, ARRAY['ingest:write'])`,
+      [agentLinkId2, grantId2]
     );
     
     const accessToken2 = `bureau_at_${crypto.randomBytes(32).toString('hex')}`;

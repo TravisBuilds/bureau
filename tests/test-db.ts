@@ -20,11 +20,18 @@ export const appPool = new Pool({
 export async function adminQuery(sql: string, params?: any[]): Promise<any> {
   let query = sql;
   if (params) {
-    // Simple param substitution for tests (not SQL injection safe, only for tests!)
+    // Simple param substitution for tests
     params.forEach((param, i) => {
-      const placeholder = `$${i + 1}`;
-      const value = typeof param === 'string' ? `'${param.replace(/'/g, "''")}'` : param;
-      query = query.replace(placeholder, String(value));
+      const placeholder = new RegExp(`\\$${i + 1}(?![0-9])`, 'g');
+      let value: string;
+      if (param === null || param === undefined) {
+        value = 'NULL';
+      } else if (typeof param === 'string') {
+        value = `'${param.replace(/'/g, "''")}'`;
+      } else {
+        value = String(param);
+      }
+      query = query.replace(placeholder, value);
     });
   }
   
@@ -36,7 +43,7 @@ export async function adminQuery(sql: string, params?: any[]): Promise<any> {
     throw new Error(stderr);
   }
   
-  return { rows: [] }; // psql doesn't return structured data easily
+  return { rows: [] };
 }
 
 export async function cleanupTests() {

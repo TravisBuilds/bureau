@@ -5,140 +5,247 @@
  * Run with: npx tsx tests/cimd.test.ts
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import https from 'node:https';
+import http from 'node:http';
 import { AddressInfo } from 'node:net';
+import { MockAgent, setGlobalDispatcher } from 'undici';
+import { fetchCIMD, isKnownVendorHost } from '../lib/oauth-cimd';
 
-// Mock server for testing
-let server: https.Server;
-let serverPort: number;
-
-before(async () => {
-  // Start HTTPS test server
-  const { readFileSync } = await import('node:fs');
-  const { resolve } = await import('node:path');
-  
-  // Self-signed cert for testing (you'd generate this in real setup)
-  // For now, we'll test without actual HTTPS or use http for unit tests
-  console.log('Note: Full HTTPS CIMD tests require test certificates');
-  console.log('Testing SSRF protection logic...\n');
-});
-
-after(() => {
-  if (server) {
-    server.close();
-  }
-});
+// Mock lookup function
+type LookupResult = Array<{ address: string; family: 4 | 6 }>;
+function mockLookup(results: LookupResult) {
+  return async (_hostname: string, _options: any) => results;
+}
 
 describe('CIMD SSRF Protection Tests', () => {
   
-  it('should block private IPv4 addresses (10.0.0.0/8)', async () => {
-    // Test would use fetchCIMD with a URL that resolves to 10.x.x.x
-    // Expected: null (blocked)
-    console.log('  ✅ Would block 10.0.0.0/8 addresses via DNS check');
-    assert.ok(true); // Placeholder - full test requires DNS mocking
+  it('should block private IPv4 (10.0.0.1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '10.0.0.1', family: 4 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block 10.0.0.1');
   });
   
-  it('should block loopback (127.0.0.0/8)', async () => {
-    console.log('  ✅ Would block 127.0.0.0/8 addresses via DNS check');
-    assert.ok(true);
+  it('should block loopback IPv4 (127.0.0.1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '127.0.0.1', family: 4 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block 127.0.0.1');
   });
   
-  it('should block IPv4-mapped IPv6 (::ffff:127.0.0.1)', async () => {
-    const { Address6 } = await import('ipaddr.js');
-    const addr = Address6.parse('::ffff:127.0.0.1');
-    assert.ok(addr.isIPv4MappedAddress());
-    console.log('  ✅ Would block IPv4-mapped IPv6 private addresses');
-    assert.ok(true);
+  it('should block carrier-grade NAT (100.64.0.1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '100.64.0.1', family: 4 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block 100.64.0.1');
   });
   
-  it('should block link-local (169.254.0.0/16)', async () => {
-    console.log('  ✅ Would block 169.254.0.0/16 addresses via DNS check');
-    assert.ok(true);
+  it('should block link-local (169.254.1.1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '169.254.1.1', family: 4 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block 169.254.1.1');
   });
   
-  it('should block carrier-grade NAT (100.64.0.0/10)', async () => {
-    console.log('  ✅ Would block 100.64.0.0/10 addresses via DNS check');
-    assert.ok(true);
+  it('should block private IPv4 (192.168.1.1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '192.168.1.1', family: 4 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block 192.168.1.1');
   });
   
   it('should block IPv6 loopback (::1)', async () => {
-    console.log('  ✅ Would block ::1 via DNS check');
-    assert.ok(true);
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '::1', family: 6 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block ::1');
   });
   
-  it('should block IPv6 unique local (fc00::/7)', async () => {
-    console.log('  ✅ Would block fc00::/7 addresses via DNS check');
-    assert.ok(true);
+  it('should block IPv6 unique local (fc00::1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: 'fc00::1', family: 6 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block fc00::1');
   });
   
-  it('should block IPv6 link-local (fe80::/10)', async () => {
-    console.log('  ✅ Would block fe80::/10 addresses via DNS check');
-    assert.ok(true);
+  it('should block IPv6 link-local (fe80::1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: 'fe80::1', family: 6 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block fe80::1');
   });
   
-  it('should reject redirects', async () => {
-    // fetchCIMD uses maxRedirections: 0
-    console.log('  ✅ Redirects rejected via undici maxRedirections: 0');
-    assert.ok(true);
+  it('should block IPv4-mapped IPv6 (::ffff:127.0.0.1)', async () => {
+    const result = await fetchCIMD('http://test.local/cimd.json', {
+      lookup: mockLookup([{ address: '::ffff:127.0.0.1', family: 6 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block ::ffff:127.0.0.1');
   });
   
-  it('should abort oversized responses (>1MB)', async () => {
-    // fetchCIMD streams body and aborts if totalSize > 1MB
-    console.log('  ✅ Oversized responses aborted during streaming');
-    assert.ok(true);
+  it('should block bracket-wrapped IPv6 ([::1])', async () => {
+    const result = await fetchCIMD('http://[::1]/cimd.json', {
+      lookup: mockLookup([{ address: '::1', family: 6 }]),
+      allowHttp: true
+    });
+    assert.strictEqual(result, null, 'Should block [::1]');
+  });
+  
+  it('should allow public IPv4 with valid response', async () => {
+    // Use MockAgent for HTTP mocking (avoids network/DNS issues)
+    const mockAgent = new MockAgent();
+    mockAgent.disableNetConnect();
+    const mockPool = mockAgent.get('http://public.test');
+    
+    mockPool.intercept({
+      path: '/cimd.json',
+      method: 'GET'
+    }).reply(200, JSON.stringify({
+      client_id: 'http://public.test/cimd.json',
+      client_name: 'Test Client',
+      redirect_uris: ['https://example.com/callback']
+    }), {
+      headers: { 'content-type': 'application/json' }
+    });
+    
+    const result = await fetchCIMD('http://public.test/cimd.json', {
+      lookup: mockLookup([{ address: '8.8.8.8', family: 4 }]),
+      dispatcher: mockAgent,
+      allowHttp: true
+    });
+    
+    assert.ok(result, 'Should allow public IP');
+    assert.strictEqual(result.doc.client_name, 'Test Client');
+  });
+  
+  it('should reject redirects (302)', async () => {
+    const mockAgent = new MockAgent();
+    mockAgent.disableNetConnect();
+    const mockPool = mockAgent.get('http://public.test');
+    
+    mockPool.intercept({
+      path: '/cimd-redirect',
+      method: 'GET'
+    }).reply(302, '', {
+      headers: { 'location': 'http://evil.com/cimd.json' }
+    });
+    
+    const result = await fetchCIMD('http://public.test/cimd-redirect', {
+      lookup: mockLookup([{ address: '8.8.8.8', family: 4 }]),
+      dispatcher: mockAgent,
+      allowHttp: true
+    });
+    
+    assert.strictEqual(result, null, 'Should reject 302 redirect');
+  });
+  
+  it('should abort oversized response (>1MB)', async () => {
+    const mockAgent = new MockAgent();
+    mockAgent.disableNetConnect();
+    const mockPool = mockAgent.get('http://public.test');
+    
+    // Create >1MB response
+    const largeBody = 'x'.repeat(1024 * 1024 + 1);
+    
+    mockPool.intercept({
+      path: '/cimd-large',
+      method: 'GET'
+    }).reply(200, largeBody, {
+      headers: { 'content-type': 'application/json' }
+    });
+    
+    const result = await fetchCIMD('http://public.test/cimd-large', {
+      lookup: mockLookup([{ address: '8.8.8.8', family: 4 }]),
+      dispatcher: mockAgent,
+      allowHttp: true
+    });
+    
+    assert.strictEqual(result, null, 'Should abort >1MB response');
   });
   
   it('should reject client_id mismatch', async () => {
-    // fetchCIMD checks doc.client_id === clientId
-    console.log('  ✅ client_id mismatch rejected');
-    assert.ok(true);
-  });
-  
-  it('should not mark spoofed vendor hosts as verified', async () => {
-    // isKnownVendorHost uses exact match or dot-suffix, not substring
-    // 'evilchatgpt.com' should NOT match 'chatgpt.com'
-    // 'chatgpt.com.evil.io' should NOT match 'chatgpt.com'
+    const mockAgent = new MockAgent();
+    mockAgent.disableNetConnect();
+    const mockPool = mockAgent.get('http://mismatch.test');
     
-    // But 'api.openai.com' SHOULD match 'openai.com' (dot-suffix)
-    console.log('  ✅ Vendor host matching uses exact or dot-suffix (not substring)');
-    console.log('  ✅ evilchatgpt.com would NOT be marked verified');
-    console.log('  ✅ chatgpt.com.evil.io would NOT be marked verified');
-    console.log('  ✅ api.openai.com WOULD be marked verified (dot-suffix)');
-    assert.ok(true);
+    mockPool.intercept({
+      path: '/cimd-mismatch.json',
+      method: 'GET'
+    }).reply(200, JSON.stringify({
+      client_id: 'https://wrong.com/cimd.json', // Mismatch
+      client_name: 'Test Client',
+      redirect_uris: ['https://example.com/callback']
+    }), {
+      headers: { 'content-type': 'application/json' }
+    });
+    
+    const result = await fetchCIMD('http://mismatch.test/cimd-mismatch.json', {
+      lookup: mockLookup([{ address: '8.8.8.8', family: 4 }]),
+      dispatcher: mockAgent,
+      allowHttp: true
+    });
+    
+    assert.strictEqual(result, null, 'Should reject client_id mismatch');
   });
   
-  it('should mark known vendor hosts as verified', async () => {
-    // openai.com, cursor.com in default list
-    // Plus BUREAU_OAUTH_VERIFIED_HOSTS env additions
-    console.log('  ✅ openai.com marked verified');
-    console.log('  ✅ cursor.com marked verified');
-    console.log('  ✅ BUREAU_OAUTH_VERIFIED_HOSTS env supported');
-    assert.ok(true);
+  it('should reject non-JSON content-type', async () => {
+    const mockAgent = new MockAgent();
+    mockAgent.disableNetConnect();
+    const mockPool = mockAgent.get('http://nonjson.test');
+    
+    mockPool.intercept({
+      path: '/cimd-html.json',
+      method: 'GET'
+    }).reply(200, '<html>Not JSON</html>', {
+      headers: { 'content-type': 'text/html' }
+    });
+    
+    const result = await fetchCIMD('http://nonjson.test/cimd-html.json', {
+      lookup: mockLookup([{ address: '8.8.8.8', family: 4 }]),
+      dispatcher: mockAgent,
+      allowHttp: true
+    });
+    
+    assert.strictEqual(result, null, 'Should reject non-JSON');
   });
   
-  it('should use custom DNS lookup to prevent rebinding', async () => {
-    // undici Agent with custom connect.lookup returns vetted IP
-    console.log('  ✅ Custom lookup prevents DNS rebinding attacks');
-    assert.ok(true);
-  });
-  
-  it('should timeout covering body read', async () => {
-    // setTimeout wraps entire request including body streaming
-    // clearTimeout only after body read complete
-    console.log('  ✅ Timeout covers entire request including body');
-    assert.ok(true);
-  });
-  
-  console.log('\n✅ All CIMD SSRF protection logic verified\n');
-  console.log('Note: Full integration tests require:');
-  console.log('  - Test HTTPS server with self-signed certs');
-  console.log('  - DNS mocking (or real DNS with test domains)');
-  console.log('  - Injectable fetch/lookup for deterministic tests');
 });
 
-// Run tests
-import('node:test').then(() => {
-  console.log('CIMD unit test structure complete');
+describe('Vendor Verification Tests', () => {
+  
+  it('should NOT verify evilchatgpt.com', () => {
+    assert.strictEqual(isKnownVendorHost('evilchatgpt.com'), false);
+  });
+  
+  it('should NOT verify chatgpt.com.evil.io', () => {
+    assert.strictEqual(isKnownVendorHost('chatgpt.com.evil.io'), false);
+  });
+  
+  it('should verify openai.com (exact)', () => {
+    assert.strictEqual(isKnownVendorHost('openai.com'), true);
+  });
+  
+  it('should verify api.openai.com (dot-suffix)', () => {
+    assert.strictEqual(isKnownVendorHost('api.openai.com'), true);
+  });
+  
+  it('should verify cursor.com (exact)', () => {
+    assert.strictEqual(isKnownVendorHost('cursor.com'), true);
+  });
+  
+  it('should verify app.cursor.com (dot-suffix)', () => {
+    assert.strictEqual(isKnownVendorHost('app.cursor.com'), true);
+  });
+  
 });
+
+console.log('\n✅ Running CIMD tests...\n');

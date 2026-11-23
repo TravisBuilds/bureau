@@ -8,6 +8,7 @@ interface Client {
   client_name: string;
   verified: boolean;
   vendor: string | null;
+  registration?: 'static' | 'cimd' | 'dcr';
 }
 
 interface Stream {

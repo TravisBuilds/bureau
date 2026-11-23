@@ -8,10 +8,9 @@
  * SSRF protections:
  * - HTTPS only
  * - DNS resolution with ALL addresses checked; reject if ANY are private/loopback/link-local
- * - CIDR-based IP validation (ipaddr.js): 0.0.0.0/8, 100.64/10, 127/8, 169.254/16, 10/8, 
- *   172.16/12, 192.168/16, 198.18/15, 224/4+, ::, ::1, fc00::/7, fe80::/10, IPv4-mapped IPv6
+ * - ipaddr.js .range() check: treat anything non-'unicast' as blocked
  * - Custom DNS lookup to connect only to vetted IPs (prevents DNS rebinding)
- * - No redirects
+ * - No redirects (undici request doesn't follow redirects by default)
  * - Stream response body, abort if >1MB
  * - Timeout covering entire request including body read
  * - JSON content-type required
@@ -19,9 +18,9 @@
  * - Vendor verification: only known hosts marked verified (env-configurable)
  */
 
-import { lookup } from 'node:dns/promises';
-import { Agent, request } from 'undici';
-import { Address4, Address6 } from 'ipaddr.js';
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { Agent, request, Dispatcher } from 'undici';
+import * as ipaddr from 'ipaddr.js';
 
 interface CIMDDocument {
   client_id: string;
@@ -41,77 +40,28 @@ interface CIMDDocument {
 const cimdCache = new Map<string, { doc: CIMDDocument; verified: boolean; expiresAt: number }>();
 
 /**
- * Check if IP address is private/loopback/link-local using CIDR ranges
- * Covers: 0.0.0.0/8, 100.64/10, 127/8, 169.254/16, 10/8, 172.16/12, 192.168/16,
- * 198.18/15, 224/4+, ::, ::1, fc00::/7, fe80::/10, IPv4-mapped IPv6
+ * Check if IP address is private/loopback/link-local
+ * Uses ipaddr.js .range(): anything non-'unicast' is blocked
+ * (private, loopback, linkLocal, carrierGradeNat, uniqueLocal, unspecified, multicast, reserved, etc.)
  */
 function isPrivateIP(ipString: string): boolean {
   try {
-    // Parse IP address
-    let addr: Address4 | Address6;
+    // Strip brackets if present (e.g., [::1] -> ::1)
+    const ip = ipString.startsWith('[') && ipString.endsWith(']')
+      ? ipString.slice(1, -1)
+      : ipString;
     
-    try {
-      addr = Address6.parse(ipString);
-      
-      // Check IPv4-mapped IPv6 (::ffff:a.b.c.d)
-      if (addr.isIPv4MappedAddress()) {
-        const ipv4 = addr.to4();
-        return isPrivateIPv4(ipv4.address);
-      }
-      
-      // IPv6 special addresses
-      if (addr.range() === 'unspecified') return true; // ::
-      if (addr.range() === 'loopback') return true; // ::1
-      if (addr.range() === 'uniqueLocal') return true; // fc00::/7
-      if (addr.range() === 'linkLocal') return true; // fe80::/10
-      if (addr.range() === 'multicast') return true;
-      
-      return false;
-    } catch {
-      // Not IPv6, try IPv4
-      addr = Address4.parse(ipString);
-      return isPrivateIPv4(addr.address);
-    }
+    // ipaddr.process() unwraps IPv4-mapped IPv6
+    const addr = ipaddr.process(ip);
+    
+    // .range() returns: 'unicast', 'private', 'loopback', 'linkLocal', 
+    // 'carrierGradeNat', 'uniqueLocal', 'unspecified', 'multicast', 
+    // 'reserved', 'benchmarking', etc.
+    // Block anything that's not 'unicast'
+    const range = addr.range();
+    return range !== 'unicast';
   } catch {
-    // Invalid IP
-    return true; // Reject unparseable IPs
-  }
-}
-
-function isPrivateIPv4(ipString: string): boolean {
-  try {
-    const addr = Address4.parse(ipString);
-    const octets = addr.octets;
-    
-    // 0.0.0.0/8
-    if (octets[0] === 0) return true;
-    
-    // 10.0.0.0/8
-    if (octets[0] === 10) return true;
-    
-    // 100.64.0.0/10 (Carrier-grade NAT)
-    if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return true;
-    
-    // 127.0.0.0/8 (loopback)
-    if (octets[0] === 127) return true;
-    
-    // 169.254.0.0/16 (link-local)
-    if (octets[0] === 169 && octets[1] === 254) return true;
-    
-    // 172.16.0.0/12
-    if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
-    
-    // 192.168.0.0/16
-    if (octets[0] === 192 && octets[1] === 168) return true;
-    
-    // 198.18.0.0/15 (benchmark testing)
-    if (octets[0] === 198 && (octets[1] === 18 || octets[1] === 19)) return true;
-    
-    // 224.0.0.0/4 (multicast)
-    if (octets[0] >= 224) return true;
-    
-    return false;
-  } catch {
+    // Invalid IP -> block
     return true;
   }
 }
@@ -124,7 +74,7 @@ function isPrivateIPv4(ipString: string): boolean {
  * - openai.com (ChatGPT)
  * - cursor.com (Cursor)
  */
-function isKnownVendorHost(hostname: string): boolean {
+export function isKnownVendorHost(hostname: string): boolean {
   const defaultVendors = [
     'openai.com',    // ChatGPT CIMD clients
     'cursor.com'     // Cursor CIMD clients
@@ -147,18 +97,29 @@ function isKnownVendorHost(hostname: string): boolean {
   return false;
 }
 
+export interface FetchCIMDOptions {
+  lookup?: typeof dnsLookup;
+  dispatcher?: Dispatcher;
+  allowHttp?: boolean; // Test-only flag
+}
+
 /**
  * Fetch and validate a CIMD document from client_id URL
  * Returns { doc, verified } or null if invalid
  * 
  * Full SSRF protections with DNS resolution and IP validation.
  */
-export async function fetchCIMD(clientId: string): Promise<{ doc: CIMDDocument; verified: boolean } | null> {
+export async function fetchCIMD(
+  clientId: string,
+  options: FetchCIMDOptions = {}
+): Promise<{ doc: CIMDDocument; verified: boolean } | null> {
+  const { lookup = dnsLookup, dispatcher, allowHttp = false } = options;
+  
   try {
-    // Client ID must be a valid HTTPS URL for CIMD
+    // Client ID must be a valid HTTPS URL for CIMD (or http in tests)
     const url = new URL(clientId);
-    if (url.protocol !== 'https:') {
-      return null; // CIMD requires HTTPS client_id
+    if (url.protocol !== 'https:' && !(allowHttp && url.protocol === 'http:')) {
+      return null;
     }
     
     // Check cache first
@@ -201,15 +162,15 @@ export async function fetchCIMD(clientId: string): Promise<{ doc: CIMDDocument; 
       }
     }
     
-    // Use first vetted address
-    const vettedAddress = addresses[0].address;
-    
     // Create custom agent with vetted IP (prevents DNS rebinding)
-    const agent = new Agent({
+    const vettedIP = addresses[0].address;
+    const vettedFamily = addresses[0].family;
+    const customAgent = dispatcher || new Agent({
       connect: {
-        lookup: (_hostname, _options, callback) => {
-          // Always return the vetted IP, ignore any DNS changes
-          callback(null, vettedAddress, addresses[0].family);
+        lookup(_hostname, _options, callback) {
+          // Always return vetted IP, ignore any DNS changes
+          // Callback signature: (err, address, family)
+          callback(null, vettedIP, vettedFamily);
         }
       }
     });
@@ -221,16 +182,17 @@ export async function fetchCIMD(clientId: string): Promise<{ doc: CIMDDocument; 
     try {
       const response = await request(clientId, {
         method: 'GET',
-        dispatcher: agent,
+        dispatcher: customAgent,
         signal: controller.signal,
-        maxRedirections: 0, // No redirects
+        // Note: undici request doesn't follow redirects by default
+        // maxRedirections removed (not supported in undici v7+)
         headers: {
           'Accept': 'application/json',
           'User-Agent': 'Bureau/1.0 OAuth CIMD'
         }
       });
       
-      // Check status
+      // Check status (reject redirects)
       if (response.statusCode !== 200) {
         console.warn(`CIMD: HTTP ${response.statusCode} for ${clientId}`);
         return null;
@@ -333,13 +295,19 @@ export async function resolveClient(clientId: string): Promise<{
   if (clientId.startsWith('https://')) {
     const cimd = await fetchCIMD(clientId);
     if (cimd) {
-      // Infer vendor from hostname
+      // Infer vendor from hostname using exact/dot-suffix match
       const url = new URL(clientId);
+      const hostname = url.hostname.toLowerCase();
+      
       let vendor = 'other';
-      if (url.hostname.includes('openai.com') || url.hostname.includes('chatgpt.com')) {
-        vendor = 'openai';
-      } else if (url.hostname.includes('cursor.com')) {
-        vendor = 'cursor';
+      if (isKnownVendorHost(hostname)) {
+        // Determine which vendor
+        if (hostname === 'openai.com' || hostname.endsWith('.openai.com') ||
+            hostname === 'chatgpt.com' || hostname.endsWith('.chatgpt.com')) {
+          vendor = 'openai';
+        } else if (hostname === 'cursor.com' || hostname.endsWith('.cursor.com')) {
+          vendor = 'cursor';
+        }
       }
       
       return {
@@ -347,7 +315,7 @@ export async function resolveClient(clientId: string): Promise<{
         client_name: cimd.doc.client_name || 'Unknown Client',
         client_uri: cimd.doc.client_uri,
         redirect_uris: cimd.doc.redirect_uris,
-        verified: cimd.verified, // Only true if on known vendor list
+        verified: cimd.verified,
         vendor,
         registration: 'cimd'
       };

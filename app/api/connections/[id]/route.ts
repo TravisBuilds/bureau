@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
+import { revokeGrant } from '@/lib/oauth-grants';
 import { query } from '@/lib/db';
 
 /**
@@ -19,15 +20,11 @@ export async function DELETE(
     const connectionId = params.id;
     
     // Revoke grant (resolve_credential checks grant status, so this effectively invalidates all tokens)
-    await query(
-      `UPDATE bureau.oauth_grants
-       SET status = 'revoked', revoked_at = NOW(), revoked_reason = 'User revoked'
-       WHERE id = $1 AND workspace_id = $2 AND user_id = $3`,
-      [connectionId, user.workspaceId, user.id]
-    );
+    const revoked = await revokeGrant(connectionId, user.id, user.workspaceId);
     
-    // Note: We don't directly UPDATE oauth_tokens (no table access)
-    // The revoked grant status is checked by resolve_credential, invalidating all tokens
+    if (!revoked) {
+      return NextResponse.json({ error: 'Connection not found or already revoked' }, { status: 404 });
+    }
     
     // Revoke agent links
     await query(

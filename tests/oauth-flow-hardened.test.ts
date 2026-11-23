@@ -8,6 +8,7 @@
 import crypto from 'crypto';
 import { adminQuery, appPool, cleanupTests, closeAll } from './test-db';
 import * as oauth from '../lib/oauth-server';
+import * as grants from '../lib/oauth-grants';
 
 function generatePKCE() {
   const verifier = crypto.randomBytes(32).toString('base64url');
@@ -229,15 +230,14 @@ async function runTests() {
     
     const grantId = grantResult.rows[0].id;
     
-    // Revoke via UPDATE (simulating /api/connections/[id] route)
-    await appPool.query(
-      `UPDATE bureau.oauth_grants 
-       SET status = 'revoked', revoked_at = NOW(), revoked_reason = 'User revoked'
-       WHERE id = $1 AND workspace_id = $2 AND user_id = $3`,
-      [grantId, workspaceA, userA]
-    );
+    // Revoke via lib function (used by /api/connections/[id] route)
+    const revoked = await grants.revokeGrant(grantId, userA, workspaceA);
     
-    console.log('   ✅ Grant marked revoked\n');
+    if (!revoked) {
+      throw new Error('Grant revocation failed');
+    }
+    
+    console.log('   ✅ Grant revoked via revokeGrant\n');
     
     // === TEST 9: resolve_credential Fails After Revoke ===
     console.log('🔟 resolve_credential fails after revoke');
@@ -337,17 +337,21 @@ async function runTests() {
     
     console.log('   ✅ Poll returns pending');
     
-    // Authorize device (as admin, simulating user approval)
-    const deviceCodeHash = crypto.createHash('sha256').update(deviceFlow.deviceCode).digest('hex');
-    await adminQuery(
-      `UPDATE bureau.oauth_device_codes 
-       SET user_id = $1, workspace_id = $2, status = 'approved',
-           agent_label = 'Device Agent', stream_ids = $3, allow_create_streams = true
-       WHERE device_code_hash = $4`,
-      [userA, workspaceA, `{${streamA}}`, deviceCodeHash]
+    // Authorize device (via SECURITY DEFINER function as bureau_app)
+    const approved = await grants.approveDeviceCode(
+      deviceFlow.userCode,
+      userA,
+      workspaceA,
+      'Device Agent',
+      [streamA],
+      true
     );
     
-    console.log('   ✅ Device authorized (admin)');
+    if (!approved) {
+      throw new Error('Device approval failed');
+    }
+    
+    console.log('   ✅ Device approved via approveDeviceCode');
     
     // Poll after authorization (should return tokens)
     const pollAfter = await oauth.pollDeviceCode(
@@ -373,8 +377,68 @@ async function runTests() {
     
     console.log('   ✅ Device token resolves correctly\n');
     
+    // === TEST 13: Device Approval Cross-Workspace Protection ===
+    console.log('1️⃣4️⃣  Device approval: B cannot approve into workspace A');
+    
+    // Start a new device flow
+    const deviceFlow2 = await oauth.startDeviceFlow(clientId, ['ingest:write']);
+    
+    // Try to approve as user B into workspace A (should fail)
+    try {
+      await grants.approveDeviceCode(
+        deviceFlow2.userCode,
+        userB,
+        workspaceA, // Wrong workspace! B is not a member
+        'Evil Agent',
+        [],
+        false
+      );
+      throw new Error('Cross-workspace device approval should have failed');
+    } catch (err: any) {
+      if (err.message.includes('USER_NOT_WORKSPACE_MEMBER')) {
+        console.log('   ✅ Cross-workspace device approval blocked\n');
+      } else {
+        throw err;
+      }
+    }
+    
+    // === TEST 14: Grant Revoke Cross-Workspace Protection ===
+    console.log('1️⃣5️⃣  Grant revoke: B cannot revoke A\'s grant by ID');
+    
+    // Find an active grant for workspace A
+    const activeGrants = await appPool.query(
+      `SELECT id FROM bureau.oauth_grants WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+      [workspaceA, userA]
+    );
+    
+    if (activeGrants.rows.length > 0) {
+      const grantIdA = activeGrants.rows[0].id;
+      
+      // Try to revoke as user B (should return false / not found)
+      const revokedByB = await grants.revokeGrant(grantIdA, userB, workspaceB);
+      
+      if (revokedByB) {
+        throw new Error('Cross-workspace grant revoke succeeded (should be blocked)');
+      }
+      
+      console.log('   ✅ Cross-workspace grant revoke blocked (not found)');
+      
+      // Verify grant is still active
+      const stillActive = await appPool.query(
+        `SELECT status FROM bureau.oauth_grants WHERE id = $1`,
+        [grantIdA]
+      );
+      
+      if (stillActive.rows[0]?.status !== 'active') {
+        throw new Error('Grant should still be active after failed cross-workspace revoke');
+      }
+      
+      console.log('   ✅ Grant still active\n');
+    }
+    
     // === SUCCESS ===
-    console.log('✅ All OAuth integration tests passed!\n');
+    const totalTests = 15;
+    console.log(`✅ All OAuth integration tests passed!\n`);
     console.log('Summary:');
     console.log('  1. Store code ✅');
     console.log('  2. Exchange with PKCE ✅');
@@ -386,9 +450,11 @@ async function runTests() {
     console.log('  8. Grant revocation ✅');
     console.log('  9. resolve_credential fails after revoke ✅');
     console.log(' 10. Refresh fails after revoke ✅');
-    console.log(' 11. Cross-workspace blocked ✅');
+    console.log(' 11. Cross-workspace token revoke blocked ✅');
     console.log(' 12. Device flow ✅');
-    console.log('\n13/13 tests passed ✅');
+    console.log(' 13. Cross-workspace device approval blocked ✅');
+    console.log(' 14. Cross-workspace grant revoke blocked ✅');
+    console.log(`\n${totalTests}/${totalTests} tests passed ✅`);
     
   } catch (error) {
     console.error('\n❌ Test failed:', error);

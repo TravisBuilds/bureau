@@ -162,15 +162,22 @@ export async function fetchCIMD(
       }
     }
     
-    // Create custom agent with vetted IP (prevents DNS rebinding)
-    const vettedIP = addresses[0].address;
-    const vettedFamily = addresses[0].family;
+    // Create custom agent with vetted addresses (prevents DNS rebinding)
+    // Node's net.connect calls lookup with options.all === true (autoSelectFamily)
+    // and expects array form: callback(null, [{address, family}])
+    // Otherwise single form: callback(null, address, family)
+    const vettedAddresses = addresses; // Keep all vetted addresses
     const customAgent = dispatcher || new Agent({
       connect: {
-        lookup(_hostname, _options, callback) {
-          // Always return vetted IP, ignore any DNS changes
-          // Callback signature: (err, address, family)
-          callback(null, vettedIP, vettedFamily);
+        lookup(_hostname, options, callback) {
+          // Always return vetted addresses, ignore any DNS changes
+          if (options?.all) {
+            // Array form for autoSelectFamily
+            callback(null, vettedAddresses);
+          } else {
+            // Single form (use first vetted address)
+            callback(null, vettedAddresses[0].address, vettedAddresses[0].family);
+          }
         }
       }
     });

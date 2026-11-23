@@ -20,7 +20,7 @@ interface MCPRequest {
 
 interface MCPResponse {
   jsonrpc: '2.0';
-  id: string | number;
+  id: string | number | null; // null for notification errors per JSON-RPC
   result?: any;
   error?: {
     code: number;
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       
       if (toolName === 'bureau_list_streams') {
         // List accessible streams
-        let streamRows;
+        let streamRows: Array<{ id: string; name: string; category: string }>;
         
         if (cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) {
           streamRows = await query<{ id: string; name: string; category: string }>(
@@ -260,18 +260,20 @@ export async function POST(request: NextRequest) {
           } as MCPResponse);
         }
         
-        // Check stream access
-        let streamId: string | null = null;
-        
+        // Check stream access and resolve stream ID
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const isUuid = uuidRegex.test(stream);
         
         const result = await withUser(cred.user_id, cred.user_email, async (client) => {
+          // stream is validated above as non-null string
+          const streamStr = stream as string;
+          let streamId: string;
+          
           if (isUuid) {
             // UUID stream lookup
             const uuidStreamRows = await client.query(
               `SELECT id FROM bureau.streams WHERE workspace_id = $1 AND id = $2::uuid`,
-              [cred.workspace_id, stream]
+              [cred.workspace_id, streamStr]
             );
             
             if (uuidStreamRows.rows.length > 0) {
@@ -288,7 +290,7 @@ export async function POST(request: NextRequest) {
             // Name lookup
             const nameStreamRows = await client.query(
               `SELECT id FROM bureau.streams WHERE workspace_id = $1 AND lower(name) = lower($2)`,
-              [cred.workspace_id, stream]
+              [cred.workspace_id, streamStr]
             );
             
             if (nameStreamRows.rows.length > 0) {
@@ -318,7 +320,7 @@ export async function POST(request: NextRequest) {
                 `INSERT INTO bureau.streams (workspace_id, name, category, description)
                  VALUES ($1, $2, 'production', 'Auto-created from MCP agent')
                  RETURNING id`,
-                [cred.workspace_id, stream]
+                [cred.workspace_id, streamStr]
               );
               
               streamId = createRows.rows[0].id;

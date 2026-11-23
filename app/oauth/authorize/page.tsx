@@ -116,6 +116,11 @@ export default function OAuthAuthorizePage() {
       }
       
       // Redirect back to client with code
+      if (!redirectUri) {
+        setError('Missing redirect_uri');
+        return;
+      }
+      
       const redirectUrl = new URL(redirectUri);
       redirectUrl.searchParams.set('code', data.code);
       if (state) {

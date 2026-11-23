@@ -53,14 +53,29 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Validate redirect host allowlist (for pilot phase)
-    const allowedHosts = [
+    // Validate redirect host allowlist (env-configurable)
+    // Defaults from vendor documentation:
+    // - chatgpt.com, chat.openai.com: ChatGPT custom MCP server callbacks
+    //   Source: https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt
+    // - www.cursor.com: Cursor MCP OAuth callback
+    //   Source: https://cursor.com/docs/mcp (fixed callback: https://www.cursor.com/agents/mcp/oauth/callback)
+    // - localhost, 127.0.0.1: Local development
+    // 
+    // Grok Bot callback host is not documented publicly; leave configurable via env.
+    // Set BUREAU_OAUTH_REDIRECT_HOSTS to add additional hosts (comma-separated).
+    const defaultHosts = [
       'chatgpt.com',
-      'chat.openai.com',
+      'chat.openai.com', 
       'www.cursor.com',
       'localhost',
       '127.0.0.1'
     ];
+    
+    const envHosts = process.env.BUREAU_OAUTH_REDIRECT_HOSTS 
+      ? process.env.BUREAU_OAUTH_REDIRECT_HOSTS.split(',').map(h => h.trim()).filter(Boolean)
+      : [];
+    
+    const allowedHosts = [...defaultHosts, ...envHosts];
     
     for (const uri of redirect_uris) {
       const url = new URL(uri);

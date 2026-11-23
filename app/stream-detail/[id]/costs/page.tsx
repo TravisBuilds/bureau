@@ -117,36 +117,32 @@ export default function StreamCostsPage({ params }: { params: Promise<{ id: stri
             >
               ← Back
             </button>
-            <h1 className="text-2xl font-semibold text-slate-900">Costs</h1>
+            <h1 className="text-2xl font-semibold text-slate-900">Output Costs</h1>
           </div>
           
           {/* Empty state */}
           <div className="border-2 border-dashed border-slate-200 rounded-xl p-16 text-center">
             <div className="mb-4 text-6xl">📊</div>
             <h3 className="text-lg font-medium text-slate-900 mb-2">
-              No costs tracked yet
+              No cost data yet
             </h3>
             <p className="text-slate-600 mb-8 max-w-md mx-auto">
-              Track generation costs per output (episode, video, Short) to understand your cost per view.
+              Send cost entries via the ingest API to track generation costs per output and calculate cost per view.
+              Include metadata like <code className="text-sm bg-slate-100 px-1 rounded">output_id</code>, <code className="text-sm bg-slate-100 px-1 rounded">output_name</code>, 
+              and <code className="text-sm bg-slate-100 px-1 rounded">views</code> for detailed tracking.
             </p>
             <div className="flex gap-3 justify-center">
               <button 
-                onClick={() => alert('API connector coming soon!')}
+                onClick={() => router.push('/settings/intake')}
                 className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
               >
-                Connect API key
+                View Intake Settings
               </button>
               <button 
-                onClick={() => alert('CSV import coming soon!')}
+                onClick={() => router.push(`/stream-detail/${id}`)}
                 className="px-6 py-3 border border-slate-300 rounded-lg font-medium hover:bg-slate-50 transition-colors"
               >
-                Import CSV
-              </button>
-              <button 
-                onClick={() => alert('Manual entry coming soon!')}
-                className="px-6 py-3 border border-slate-300 rounded-lg font-medium hover:bg-slate-50 transition-colors"
-              >
-                Enter manually
+                Back to Stream
               </button>
             </div>
           </div>

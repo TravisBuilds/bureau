@@ -1,5 +1,6 @@
 -- OAuth MCP Hardening Migration
 -- Remove direct table access from bureau_app, enforce SECURITY DEFINER functions only
+-- Idempotent: safe to re-run
 
 BEGIN;
 
@@ -65,6 +66,8 @@ DECLARE
   v_code_row RECORD;
 BEGIN
   -- Select and mark consumed atomically
+  -- Checks: not consumed, not expired, client_id matches
+  -- Caller must verify redirect_uri and PKCE
   UPDATE oauth_codes
   SET consumed_at = now()
   WHERE code_hash = p_code_hash
@@ -87,6 +90,7 @@ BEGIN
   INTO v_code_row;
   
   IF v_code_row IS NULL THEN
+    -- Code invalid, expired, already consumed, or client_id mismatch
     RETURN;
   END IF;
   

@@ -180,7 +180,10 @@ export default function OAuthAuthorizePage() {
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <p className="text-sm text-yellow-800">
               <strong>⚠️ Unverified Client</strong><br/>
-              This client is not verified by Bureau. Only approve if you trust this application.
+              This client is not on Bureau's verified vendor list. Only approve if you trust this application.
+              {client.registration === 'cimd' && client.client_id && (
+                <><br/><span className="font-mono text-xs">Client ID: {new URL(client.client_id).hostname}</span></>
+              )}
             </p>
           </div>
         )}

@@ -7,13 +7,21 @@
  * 
  * SSRF protections:
  * - HTTPS only
- * - Block private/loopback/link-local IPs after DNS resolution
- * - No redirects (or same-origin only)
- * - Response size cap (1MB)
- * - Short timeout (5s)
+ * - DNS resolution with ALL addresses checked; reject if ANY are private/loopback/link-local
+ * - CIDR-based IP validation (ipaddr.js): 0.0.0.0/8, 100.64/10, 127/8, 169.254/16, 10/8, 
+ *   172.16/12, 192.168/16, 198.18/15, 224/4+, ::, ::1, fc00::/7, fe80::/10, IPv4-mapped IPv6
+ * - Custom DNS lookup to connect only to vetted IPs (prevents DNS rebinding)
+ * - No redirects
+ * - Stream response body, abort if >1MB
+ * - Timeout covering entire request including body read
  * - JSON content-type required
  * - Cache with TTL (5 minutes)
+ * - Vendor verification: only known hosts marked verified (env-configurable)
  */
+
+import { lookup } from 'node:dns/promises';
+import { Agent, request } from 'undici';
+import { Address4, Address6 } from 'ipaddr.js';
 
 interface CIMDDocument {
   client_id: string;
@@ -30,37 +38,122 @@ interface CIMDDocument {
 }
 
 // Simple in-memory cache for CIMD documents
-const cimdCache = new Map<string, { doc: CIMDDocument; expiresAt: number }>();
+const cimdCache = new Map<string, { doc: CIMDDocument; verified: boolean; expiresAt: number }>();
 
 /**
- * Check if IP is private/loopback/link-local
+ * Check if IP address is private/loopback/link-local using CIDR ranges
+ * Covers: 0.0.0.0/8, 100.64/10, 127/8, 169.254/16, 10/8, 172.16/12, 192.168/16,
+ * 198.18/15, 224/4+, ::, ::1, fc00::/7, fe80::/10, IPv4-mapped IPv6
  */
-function isPrivateIP(ip: string): boolean {
-  // IPv4 private ranges
-  if (ip.startsWith('10.')) return true;
-  if (ip.startsWith('127.')) return true; // loopback
-  if (ip.startsWith('169.254.')) return true; // link-local
-  if (ip.startsWith('172.')) {
-    const second = parseInt(ip.split('.')[1]);
-    if (second >= 16 && second <= 31) return true; // 172.16.0.0/12
+function isPrivateIP(ipString: string): boolean {
+  try {
+    // Parse IP address
+    let addr: Address4 | Address6;
+    
+    try {
+      addr = Address6.parse(ipString);
+      
+      // Check IPv4-mapped IPv6 (::ffff:a.b.c.d)
+      if (addr.isIPv4MappedAddress()) {
+        const ipv4 = addr.to4();
+        return isPrivateIPv4(ipv4.address);
+      }
+      
+      // IPv6 special addresses
+      if (addr.range() === 'unspecified') return true; // ::
+      if (addr.range() === 'loopback') return true; // ::1
+      if (addr.range() === 'uniqueLocal') return true; // fc00::/7
+      if (addr.range() === 'linkLocal') return true; // fe80::/10
+      if (addr.range() === 'multicast') return true;
+      
+      return false;
+    } catch {
+      // Not IPv6, try IPv4
+      addr = Address4.parse(ipString);
+      return isPrivateIPv4(addr.address);
+    }
+  } catch {
+    // Invalid IP
+    return true; // Reject unparseable IPs
   }
-  if (ip.startsWith('192.168.')) return true;
+}
+
+function isPrivateIPv4(ipString: string): boolean {
+  try {
+    const addr = Address4.parse(ipString);
+    const octets = addr.octets;
+    
+    // 0.0.0.0/8
+    if (octets[0] === 0) return true;
+    
+    // 10.0.0.0/8
+    if (octets[0] === 10) return true;
+    
+    // 100.64.0.0/10 (Carrier-grade NAT)
+    if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return true;
+    
+    // 127.0.0.0/8 (loopback)
+    if (octets[0] === 127) return true;
+    
+    // 169.254.0.0/16 (link-local)
+    if (octets[0] === 169 && octets[1] === 254) return true;
+    
+    // 172.16.0.0/12
+    if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+    
+    // 192.168.0.0/16
+    if (octets[0] === 192 && octets[1] === 168) return true;
+    
+    // 198.18.0.0/15 (benchmark testing)
+    if (octets[0] === 198 && (octets[1] === 18 || octets[1] === 19)) return true;
+    
+    // 224.0.0.0/4 (multicast)
+    if (octets[0] >= 224) return true;
+    
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Check if hostname matches a known vendor domain
+ * Requires exact match or proper dot-suffix match (not substring)
+ * 
+ * Known vendors (env-configurable via BUREAU_OAUTH_VERIFIED_HOSTS):
+ * - openai.com (ChatGPT)
+ * - cursor.com (Cursor)
+ */
+function isKnownVendorHost(hostname: string): boolean {
+  const defaultVendors = [
+    'openai.com',    // ChatGPT CIMD clients
+    'cursor.com'     // Cursor CIMD clients
+  ];
   
-  // IPv6 private/loopback
-  if (ip === '::1') return true; // loopback
-  if (ip.startsWith('fc00:') || ip.startsWith('fd00:')) return true; // ULA
-  if (ip.startsWith('fe80:')) return true; // link-local
+  const envVendors = process.env.BUREAU_OAUTH_VERIFIED_HOSTS
+    ? process.env.BUREAU_OAUTH_VERIFIED_HOSTS.split(',').map(h => h.trim()).filter(Boolean)
+    : [];
+  
+  const knownHosts = [...defaultVendors, ...envVendors];
+  
+  for (const known of knownHosts) {
+    // Exact match
+    if (hostname === known) return true;
+    
+    // Dot-suffix match (subdomain.openai.com matches openai.com)
+    if (hostname.endsWith('.' + known)) return true;
+  }
   
   return false;
 }
 
 /**
  * Fetch and validate a CIMD document from client_id URL
- * Returns null if document is unreachable or invalid
+ * Returns { doc, verified } or null if invalid
  * 
- * SSRF protections applied.
+ * Full SSRF protections with DNS resolution and IP validation.
  */
-export async function fetchCIMD(clientId: string): Promise<CIMDDocument | null> {
+export async function fetchCIMD(clientId: string): Promise<{ doc: CIMDDocument; verified: boolean } | null> {
   try {
     // Client ID must be a valid HTTPS URL for CIMD
     const url = new URL(clientId);
@@ -71,115 +164,161 @@ export async function fetchCIMD(clientId: string): Promise<CIMDDocument | null> 
     // Check cache first
     const cached = cimdCache.get(clientId);
     if (cached && cached.expiresAt > Date.now()) {
-      return cached.doc;
+      return { doc: cached.doc, verified: cached.verified };
     }
     
-    // DNS resolution check (Node.js DNS module for IP validation)
-    // Note: In production, consider using a DNS library to resolve and block private IPs
-    // For now, we rely on hostname validation and URL parsing
-    
-    // Block obvious private hostnames
     const hostname = url.hostname.toLowerCase();
-    if (hostname === 'localhost' || hostname.endsWith('.local') || 
-        hostname === '127.0.0.1' || hostname === '::1' ||
-        isPrivateIP(hostname)) {
-      console.warn(`CIMD: Blocked private/loopback hostname: ${hostname}`);
-      return null;
-    }
     
-    // Fetch client_id URL directly (not /.well-known/oauth-client)
-    // Per spec: client_id URL itself IS the metadata document
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-    
-    const response = await fetch(clientId, {
-      signal: controller.signal,
-      redirect: 'manual', // No redirects (or implement same-origin check)
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Bureau/1.0 OAuth CIMD'
-      }
-    });
-    
-    clearTimeout(timeout);
-    
-    // Reject redirects
-    if (response.status >= 300 && response.status < 400) {
-      console.warn(`CIMD: Redirect rejected for ${clientId}`);
-      return null;
-    }
-    
-    if (!response.ok) {
-      return null;
-    }
-    
-    // Validate content-type
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      console.warn(`CIMD: Invalid content-type: ${contentType}`);
-      return null;
-    }
-    
-    // Response size cap (1MB)
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 1024 * 1024) {
-      console.warn(`CIMD: Response too large: ${contentLength} bytes`);
-      return null;
-    }
-    
-    const text = await response.text();
-    if (text.length > 1024 * 1024) {
-      console.warn(`CIMD: Response body too large: ${text.length} bytes`);
-      return null;
-    }
-    
-    const doc = JSON.parse(text) as CIMDDocument;
-    
-    // Validate required fields
-    if (!doc.client_id || !doc.redirect_uris || doc.redirect_uris.length === 0) {
-      console.warn(`CIMD: Missing required fields`);
-      return null;
-    }
-    
-    // Validate client_id matches the fetched URL exactly
-    if (doc.client_id !== clientId) {
-      console.warn(`CIMD client_id mismatch: requested ${clientId}, got ${doc.client_id}`);
-      return null;
-    }
-    
-    // Validate all redirect_uris are HTTPS or localhost
-    for (const uri of doc.redirect_uris) {
-      try {
-        const redirectUrl = new URL(uri);
-        if (redirectUrl.protocol !== 'https:' && 
-            redirectUrl.hostname !== 'localhost' && 
-            redirectUrl.hostname !== '127.0.0.1') {
-          console.warn(`CIMD invalid redirect_uri: ${uri}`);
-          return null;
-        }
-      } catch {
-        console.warn(`CIMD malformed redirect_uri: ${uri}`);
+    // Block bracket-wrapped IPs like [::1]
+    if (hostname.startsWith('[') && hostname.endsWith(']')) {
+      const ip = hostname.slice(1, -1);
+      if (isPrivateIP(ip)) {
+        console.warn(`CIMD: Blocked private IP in brackets: ${hostname}`);
         return null;
       }
     }
     
-    // Cache for 5 minutes
-    cimdCache.set(clientId, {
-      doc,
-      expiresAt: Date.now() + 5 * 60 * 1000
+    // DNS resolution: get ALL addresses
+    let addresses: Array<{ address: string; family: 4 | 6 }>;
+    try {
+      const results = await lookup(hostname, { all: true });
+      addresses = results.map(r => ({ address: r.address, family: r.family as 4 | 6 }));
+    } catch (err) {
+      console.warn(`CIMD: DNS resolution failed for ${hostname}:`, err);
+      return null;
+    }
+    
+    if (addresses.length === 0) {
+      console.warn(`CIMD: No addresses resolved for ${hostname}`);
+      return null;
+    }
+    
+    // Check if ANY resolved address is private (reject if so)
+    for (const addr of addresses) {
+      if (isPrivateIP(addr.address)) {
+        console.warn(`CIMD: Blocked private/reserved IP ${addr.address} for ${hostname}`);
+        return null;
+      }
+    }
+    
+    // Use first vetted address
+    const vettedAddress = addresses[0].address;
+    
+    // Create custom agent with vetted IP (prevents DNS rebinding)
+    const agent = new Agent({
+      connect: {
+        lookup: (_hostname, _options, callback) => {
+          // Always return the vetted IP, ignore any DNS changes
+          callback(null, vettedAddress, addresses[0].family);
+        }
+      }
     });
     
-    return doc;
+    // Fetch with timeout covering entire request including body
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    
+    try {
+      const response = await request(clientId, {
+        method: 'GET',
+        dispatcher: agent,
+        signal: controller.signal,
+        maxRedirections: 0, // No redirects
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Bureau/1.0 OAuth CIMD'
+        }
+      });
+      
+      // Check status
+      if (response.statusCode !== 200) {
+        console.warn(`CIMD: HTTP ${response.statusCode} for ${clientId}`);
+        return null;
+      }
+      
+      // Validate content-type
+      const contentType = response.headers['content-type'];
+      if (!contentType || !contentType.toString().includes('application/json')) {
+        console.warn(`CIMD: Invalid content-type: ${contentType}`);
+        return null;
+      }
+      
+      // Stream body with size cap (abort if >1MB)
+      const chunks: Buffer[] = [];
+      let totalSize = 0;
+      const maxSize = 1024 * 1024; // 1MB
+      
+      for await (const chunk of response.body) {
+        totalSize += chunk.length;
+        if (totalSize > maxSize) {
+          controller.abort();
+          console.warn(`CIMD: Response body too large (>${maxSize} bytes)`);
+          return null;
+        }
+        chunks.push(Buffer.from(chunk));
+      }
+      
+      clearTimeout(timeout);
+      
+      const text = Buffer.concat(chunks).toString('utf-8');
+      const doc = JSON.parse(text) as CIMDDocument;
+      
+      // Validate required fields
+      if (!doc.client_id || !doc.redirect_uris || doc.redirect_uris.length === 0) {
+        console.warn(`CIMD: Missing required fields`);
+        return null;
+      }
+      
+      // Validate client_id matches the fetched URL exactly
+      if (doc.client_id !== clientId) {
+        console.warn(`CIMD client_id mismatch: requested ${clientId}, got ${doc.client_id}`);
+        return null;
+      }
+      
+      // Validate all redirect_uris are HTTPS or localhost
+      for (const uri of doc.redirect_uris) {
+        try {
+          const redirectUrl = new URL(uri);
+          if (redirectUrl.protocol !== 'https:' && 
+              redirectUrl.hostname !== 'localhost' && 
+              redirectUrl.hostname !== '127.0.0.1') {
+            console.warn(`CIMD invalid redirect_uri: ${uri}`);
+            return null;
+          }
+        } catch {
+          console.warn(`CIMD malformed redirect_uri: ${uri}`);
+          return null;
+        }
+      }
+      
+      // Check if this is a known vendor (for verified status)
+      const verified = isKnownVendorHost(hostname);
+      
+      // Cache for 5 minutes
+      cimdCache.set(clientId, {
+        doc,
+        verified,
+        expiresAt: Date.now() + 5 * 60 * 1000
+      });
+      
+      return { doc, verified };
+      
+    } finally {
+      clearTimeout(timeout);
+    }
     
   } catch (error) {
     // Network error, timeout, or invalid JSON
+    if ((error as any).name !== 'AbortError') {
+      console.warn(`CIMD fetch error for ${clientId}:`, error);
+    }
     return null;
   }
 }
 
 /**
  * Resolve client by ID: try CIMD first, fall back to DB lookup
- * Returns client info or null if not found/invalid
+ * Returns client info with verified status
  */
 export async function resolveClient(clientId: string): Promise<{
   client_id: string;
@@ -194,21 +333,21 @@ export async function resolveClient(clientId: string): Promise<{
   if (clientId.startsWith('https://')) {
     const cimd = await fetchCIMD(clientId);
     if (cimd) {
-      // Infer vendor from redirect URIs
+      // Infer vendor from hostname
+      const url = new URL(clientId);
       let vendor = 'other';
-      const firstRedirect = new URL(cimd.redirect_uris[0]);
-      if (firstRedirect.hostname.includes('openai.com') || firstRedirect.hostname.includes('chatgpt.com')) {
+      if (url.hostname.includes('openai.com') || url.hostname.includes('chatgpt.com')) {
         vendor = 'openai';
-      } else if (firstRedirect.hostname.includes('cursor.com')) {
+      } else if (url.hostname.includes('cursor.com')) {
         vendor = 'cursor';
       }
       
       return {
-        client_id: cimd.client_id,
-        client_name: cimd.client_name || 'Unknown Client',
-        client_uri: cimd.client_uri,
-        redirect_uris: cimd.redirect_uris,
-        verified: true, // CIMD clients are self-verified via DNS/TLS
+        client_id: cimd.doc.client_id,
+        client_name: cimd.doc.client_name || 'Unknown Client',
+        client_uri: cimd.doc.client_uri,
+        redirect_uris: cimd.doc.redirect_uris,
+        verified: cimd.verified, // Only true if on known vendor list
         vendor,
         registration: 'cimd'
       };

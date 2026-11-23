@@ -334,7 +334,7 @@ export async function startDeviceFlow(
     [deviceCodeHash, userCode, clientName, scopes]
   );
   
-  const baseUri = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau.build';
+  const baseUri = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
   
   return {
     deviceCode,

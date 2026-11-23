@@ -6,7 +6,7 @@ import Link from 'next/link';
 export default function ConnectPage() {
   const [copiedUrl, setCopiedUrl] = useState(false);
   
-  const mcpServerUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau.build';
+  const mcpServerUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
   const mcpUrl = `${mcpServerUrl}/mcp`;
   
   const copyToClipboard = (text: string) => {

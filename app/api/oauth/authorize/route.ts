@@ -38,18 +38,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User denied' }, { status: 403 });
     }
     
-    // Look up client
-    const clientRows = await query<{ redirect_uris: string[] }>(
-      `SELECT redirect_uris FROM bureau.oauth_clients WHERE client_id = $1`,
-      [client_id]
-    );
+    // Resolve client (CIMD or DB)
+    const { resolveClient: resolveCIMDClient } = await import('@/lib/oauth-cimd');
+    const cimdClient = await resolveCIMDClient(client_id);
     
-    if (clientRows.length === 0) {
-      return NextResponse.json({ error: 'Unknown client' }, { status: 400 });
+    let redirectUris: string[];
+    
+    if (cimdClient) {
+      redirectUris = cimdClient.redirect_uris;
+    } else {
+      // Fall back to DB lookup
+      const clientRows = await query<{ redirect_uris: string[] }>(
+        `SELECT redirect_uris FROM bureau.oauth_clients WHERE client_id = $1`,
+        [client_id]
+      );
+      
+      if (clientRows.length === 0) {
+        return NextResponse.json({ error: 'Unknown client' }, { status: 400 });
+      }
+      
+      redirectUris = clientRows[0].redirect_uris;
     }
     
     // Validate redirect URI
-    if (!validateRedirectUri(redirect_uri, clientRows[0].redirect_uris)) {
+    if (!validateRedirectUri(redirect_uri, redirectUris)) {
       return NextResponse.json({ error: 'Invalid redirect_uri' }, { status: 400 });
     }
     

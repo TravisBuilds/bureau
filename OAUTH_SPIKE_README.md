@@ -2,7 +2,7 @@
 
 **Status:** Preview spike (branch `cursor/mcp-oauth-spike-f836`)  
 **Date:** 2026-11-23  
-**Migration:** `20261123000000_oauth_mcp_server.sql` (NOT applied to production)
+**Migration:** `20261123170000_oauth_mcp_server.sql` (NOT applied to production)
 
 ## What This Spike Implements
 
@@ -254,11 +254,11 @@ Modified tables:
 
 1. Sign in to Bureau at `bureau.build`
 2. Go to Settings → Connections → "Connect ChatGPT"
-3. Copy the Bureau MCP URL: `https://bureau.build/mcp`
+3. Copy the Bureau MCP URL: `https://bureau-krustbuild.vercel.app/mcp`
 4. In ChatGPT:
    - Settings → Beta Features → Custom MCP Servers
    - Add Custom Server
-   - Paste `https://bureau.build/mcp`
+   - Paste `https://bureau-krustbuild.vercel.app/mcp`
    - ChatGPT redirects to Bureau consent screen
 5. On Bureau consent screen:
    - Enter agent name (e.g. "My ChatGPT Assistant")

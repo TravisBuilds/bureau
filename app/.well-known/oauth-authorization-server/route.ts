@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
  * Required by MCP spec
  */
 export async function GET() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau.build';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
   
   return NextResponse.json({
     issuer: baseUrl,

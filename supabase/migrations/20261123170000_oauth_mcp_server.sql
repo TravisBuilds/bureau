@@ -211,11 +211,15 @@ CREATE POLICY agent_seen_workspace ON bureau.agent_seen
   FOR ALL
   USING (workspace_id IN (SELECT bureau.user_workspaces()));
 
--- OAuth clients: global read (no insert/update for app role)
+-- OAuth clients: global read, allow insert for DCR
 ALTER TABLE bureau.oauth_clients ENABLE ROW LEVEL SECURITY;
 CREATE POLICY oauth_clients_read ON bureau.oauth_clients
   FOR SELECT
   USING (true);
+
+CREATE POLICY oauth_clients_insert ON bureau.oauth_clients
+  FOR INSERT
+  WITH CHECK (registration = 'dcr'); -- Only DCR clients can self-register
 
 -- Secret-bearing tables: NO POLICY for bureau_app, touched only via SECURITY DEFINER
 ALTER TABLE bureau.oauth_tokens ENABLE ROW LEVEL SECURITY;

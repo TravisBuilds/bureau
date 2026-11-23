@@ -8,7 +8,7 @@ export default function ConnectChatGPTPage() {
   const [polling, setPolling] = useState(false);
   const [connected, setConnected] = useState(false);
   
-  const mcpServerUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau.build';
+  const mcpServerUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
   const mcpUrl = `${mcpServerUrl}/mcp`;
   
   const copyToClipboard = (text: string) => {
@@ -57,9 +57,12 @@ export default function ConnectChatGPTPage() {
               <li className="flex">
                 <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold mr-4">2</span>
                 <div className="flex-1">
-                  <p className="font-semibold mb-2">Open ChatGPT Settings</p>
-                  <p className="text-sm text-gray-600">
-                    Go to ChatGPT → Settings → Beta Features → Custom MCP Servers
+                  <p className="font-semibold mb-2">Add Custom MCP Server in ChatGPT</p>
+                  <p className="text-sm text-gray-600 mb-2">
+                    See <a href="https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ChatGPT MCP documentation</a> for setup instructions.
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Note: Full write access requires Business/Enterprise/Edu. Pro has read-only MCP.
                   </p>
                 </div>
               </li>

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { resolveClient } from '@/lib/oauth-cimd';
 
 /**
  * GET /api/oauth/client?client_id=...
  * Returns public client info for consent screen
+ * Tries CIMD first, falls back to DB
  */
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +15,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing client_id' }, { status: 400 });
     }
     
+    // Try CIMD resolution first (if client_id is HTTPS URL)
+    const cimdClient = await resolveClient(clientId);
+    if (cimdClient) {
+      return NextResponse.json(cimdClient);
+    }
+    
+    // Fall back to DB lookup (static or DCR clients)
     const rows = await query<{
       client_id: string;
       client_name: string;
@@ -20,8 +29,9 @@ export async function GET(request: NextRequest) {
       redirect_uris: string[];
       verified: boolean;
       vendor: string | null;
+      registration: string;
     }>(
-      `SELECT client_id, client_name, client_uri, redirect_uris, verified, vendor
+      `SELECT client_id, client_name, client_uri, redirect_uris, verified, vendor, registration
        FROM bureau.oauth_clients
        WHERE client_id = $1`,
       [clientId]

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         {
           status: 401,
           headers: {
-            'WWW-Authenticate': `Bearer realm="${process.env.NEXT_PUBLIC_APP_URL || 'https://bureau.build'}/mcp", resource_metadata="${process.env.NEXT_PUBLIC_APP_URL || 'https://bureau.build'}/.well-known/oauth-protected-resource"`
+            'WWW-Authenticate': `Bearer realm="${process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app'}/mcp", resource_metadata="${process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app'}/.well-known/oauth-protected-resource"`
           }
         }
       );
@@ -394,7 +394,7 @@ export async function POST(request: NextRequest) {
         id: null,
         error: {
           code: -32000,
-          message: 'Stream not allowed for this agent. Add it at bureau.build/connections'
+          message: 'Stream not allowed for this agent. Add it at bureau-krustbuild.vercel.app/connections'
         }
       } as MCPResponse, { status: 403 });
     }

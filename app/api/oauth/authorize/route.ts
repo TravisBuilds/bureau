@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
-import { query } from '@/lib/db';
+import { query, withUser } from '@/lib/db';
 
 // Scope allowlist
 const ALLOWED_SCOPES = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
@@ -80,9 +80,11 @@ export async function POST(request: NextRequest) {
     
     // Validate stream IDs belong to workspace
     if (stream_ids && stream_ids.length > 0) {
-      const streamRows = await query(
-        `SELECT id FROM bureau.streams WHERE workspace_id = $1 AND id = ANY($2)`,
-        [user.workspaceId, stream_ids]
+      const streamRows = await withUser(user.id, user.email, async (client) =>
+        (await client.query(
+          `SELECT id FROM bureau.streams WHERE workspace_id = $1 AND id = ANY($2)`,
+          [user.workspaceId, stream_ids]
+        )).rows
       );
       
       if (streamRows.length !== stream_ids.length) {

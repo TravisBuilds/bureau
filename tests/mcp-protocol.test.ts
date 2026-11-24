@@ -1,189 +1,98 @@
 /**
- * MCP Protocol Tests
- * Tests the full MCP protocol implementation
+ * MCP protocol tests against the real /api/mcp handler with a real OAuth token
+ * (grant -> agent_link -> hex-sha256 access token), app running as bureau_app.
  */
-
-import { describe, it, expect } from 'vitest';
-import { POST as mcpHandler } from '../app/api/mcp/route';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { NextRequest } from 'next/server';
+import { admin, cleanup, createWorkspace, createOAuthToken } from './helpers/clone-fixtures';
 
-describe('MCP Protocol', () => {
-  it('should implement initialize handshake with protocol negotiation', async () => {
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer bureau_test_token_12345'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2025-06-18',
-          clientInfo: { name: 'test-client', version: '1.0.0' },
-          capabilities: {}
-        }
-      })
-    });
+let mcpPost: any, mcpAliasPost: any, token: string;
 
-    const res = await mcpHandler(req);
-    const data = await res.json();
+const call = (body: any, auth: string | null = `Bearer ${token}`, raw = false) => {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (auth) headers.authorization = auth;
+  return mcpPost(new NextRequest('http://localhost:3000/api/mcp', {
+    method: 'POST', headers, body: raw ? body : JSON.stringify(body),
+  }));
+};
 
-    expect(data.jsonrpc).toBe('2.0');
-    expect(data.id).toBe(1);
-    expect(data.result.protocolVersion).toBe('2025-06-18');
-    expect(data.result.serverInfo).toEqual({
-      name: 'Bureau MCP Server',
-      version: '1.0.0'
-    });
-    expect(data.result.capabilities).toEqual({ tools: {} });
+beforeAll(async () => {
+  ({ POST: mcpPost } = await import('../app/api/mcp/route'));
+  ({ POST: mcpAliasPost } = await import('../app/mcp/route'));
+  const ws = await createWorkspace('mcp-proto');
+  token = (await createOAuthToken({ workspaceId: ws.id, userId: ws.owner.userId })).token;
+});
+afterAll(async () => { await cleanup(); await admin.end(); });
+
+describe('MCP protocol', () => {
+  it('/mcp re-exports the same POST handler', () => {
+    expect(mcpAliasPost).toBe(mcpPost);
   });
 
-  it('should handle ping', async () => {
-    // Test ping directly via POST
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer bureau_test_token_12345'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'ping',
-        params: {}
-      })
-    });
-
-    const res = await mcpHandler(req);
-    const data = await res.json();
-
-    expect(data.jsonrpc).toBe('2.0');
-    expect(data.id).toBe(1);
-    expect(data.result).toEqual({});
+  it('initialize negotiates a supported protocol version', async () => {
+    const res = await call({ jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-06-18', clientInfo: { name: 't', version: '1' }, capabilities: {} } });
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d).toMatchObject({ jsonrpc: '2.0', id: 1 });
+    expect(d.result.protocolVersion).toBe('2025-06-18');
+    expect(d.result.serverInfo).toEqual({ name: 'Bureau MCP Server', version: '1.0.0' });
+    expect(d.result.capabilities).toEqual({ tools: {} });
   });
 
-  it('should handle notifications/initialized with 202', async () => {
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer bureau_test_token_12345'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'notifications/initialized',
-        params: {}
-      })
-    });
+  it('initialize falls back to the latest version for an unknown one', async () => {
+    const d = await (await call({ jsonrpc: '2.0', id: 4, method: 'initialize', params: { protocolVersion: '2099-99-99' } })).json();
+    expect(d.result.protocolVersion).toBe('2025-06-18');
+  });
 
-    const res = await mcpHandler(req);
+  it('notifications/initialized -> 202 with empty body', async () => {
+    const res = await call({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
     expect(res.status).toBe(202);
-    
-    // Response body should be empty for notification
-    const text = await res.text();
-    expect(text).toBe('');
+    expect(await res.text()).toBe('');
   });
 
-  it('should list tools', async () => {
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer bureau_test_token_12345'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'tools/list',
-        params: {}
-      })
-    });
-
-    const res = await mcpHandler(req);
-    const data = await res.json();
-
-    expect(data.jsonrpc).toBe('2.0');
-    expect(data.id).toBe(2);
-    expect(data.result).toHaveProperty('tools');
-    expect(Array.isArray(data.result.tools)).toBe(true);
-    expect(data.result.tools.length).toBeGreaterThan(0);
-    
-    // Check for expected tools
-    const toolNames = data.result.tools.map((t: any) => t.name);
-    expect(toolNames).toContain('bureau_register_clone');
-    expect(toolNames).toContain('bureau_update_profile');
-    expect(toolNames).toContain('bureau_get_questions');
+  it('ping -> empty result', async () => {
+    expect(await (await call({ jsonrpc: '2.0', id: 2, method: 'ping', params: {} })).json())
+      .toEqual({ jsonrpc: '2.0', id: 2, result: {} });
   });
 
-  it('should return 401 without Authorization header with WWW-Authenticate', async () => {
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 3,
-        method: 'tools/list',
-        params: {}
-      })
-    });
+  it('tools/list returns all 10 Bureau tools with input schemas', async () => {
+    const d = await (await call({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} })).json();
+    const names = d.result.tools.map((t: any) => t.name).sort();
+    expect(names).toEqual([
+      'bureau_answer_question', 'bureau_escalate_question', 'bureau_get_questions', 'bureau_list_streams',
+      'bureau_post_heartbeat', 'bureau_register_clone', 'bureau_report_cost', 'bureau_team_health',
+      'bureau_update_profile', 'bureau_whoami',
+    ]);
+    for (const t of d.result.tools) expect(t.inputSchema?.type).toBe('object');
+  });
 
-    const res = await mcpHandler(req);
+  it('tools/call bureau_whoami works with the real token', async () => {
+    const d = await (await call({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'bureau_whoami', arguments: {} } })).json();
+    expect(d.error).toBeUndefined();
+    expect(d.result.content[0].type).toBe('text');
+  });
+
+  it('unknown method -> -32601', async () => {
+    const d = await (await call({ jsonrpc: '2.0', id: 6, method: 'nope/nope', params: {} })).json();
+    expect(d.error.code).toBe(-32601);
+  });
+
+  it('malformed JSON (authenticated) -> -32700', async () => {
+    const d = await (await call('{not json', `Bearer ${token}`, true)).json();
+    expect(d).toMatchObject({ jsonrpc: '2.0', id: null, error: { code: -32700 } });
+  });
+
+  it('missing Authorization -> 401 with RFC 9728 WWW-Authenticate', async () => {
+    const res = await call({ jsonrpc: '2.0', id: 7, method: 'initialize', params: {} }, null);
     expect(res.status).toBe(401);
-    
-    const wwwAuth = res.headers.get('WWW-Authenticate');
-    expect(wwwAuth).toBeTruthy();
-    expect(wwwAuth).toContain('Bearer');
-    expect(wwwAuth).toContain('resource_metadata');
-    expect(wwwAuth).toContain('/.well-known/oauth-protected-resource');
+    expect(res.headers.get('www-authenticate')).toMatch(/^Bearer realm="https?:\/\/[^"]+\/mcp", resource_metadata="https?:\/\/[^"]+\/\.well-known\/oauth-protected-resource"$/);
   });
 
-  it('should return JSON-RPC error for parse error', async () => {
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer bureau_test_token_12345'
-      },
-      body: 'invalid json{'
-    });
-
-    const res = await mcpHandler(req);
-    const data = await res.json();
-
-    expect(data.jsonrpc).toBe('2.0');
-    expect(data.id).toBe(null);
-    expect(data.error).toEqual({
-      code: -32700,
-      message: 'Parse error'
-    });
-  });
-
-  it('should fallback to latest protocol version if client version unsupported', async () => {
-    const req = new NextRequest('http://localhost:3000/api/mcp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer bureau_test_token_12345'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 4,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2099-99-99',
-          clientInfo: { name: 'test-client', version: '1.0.0' },
-          capabilities: {}
-        }
-      })
-    });
-
-    const res = await mcpHandler(req);
-    const data = await res.json();
-
-    expect(data.result.protocolVersion).toBe('2025-06-18');
+  it('invalid token -> 401 with absolute resource_metadata', async () => {
+    const res = await call({ jsonrpc: '2.0', id: 8, method: 'initialize', params: {} }, 'Bearer bureau_at_not_a_real_token');
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toBe(
+      'Bearer realm="http://localhost:3000/mcp", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"');
   });
 });

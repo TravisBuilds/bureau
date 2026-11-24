@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
 import { revokeGrant } from '@/lib/oauth-grants';
-import { query } from '@/lib/db';
+import { withUser } from '@/lib/db';
 
 /**
  * DELETE /api/connections/[id] - Revoke a connection
@@ -27,11 +27,13 @@ export async function DELETE(
     }
     
     // Revoke agent links
-    await query(
-      `UPDATE bureau.agent_links
-       SET status = 'revoked', revoked_at = NOW()
-       WHERE grant_id = $1`,
-      [connectionId]
+    await withUser(user.id, user.email, (client) =>
+      client.query(
+        `UPDATE bureau.agent_links
+         SET status = 'revoked', revoked_at = NOW()
+         WHERE grant_id = $1 AND workspace_id = $2`,
+        [connectionId, user.workspaceId]
+      )
     );
     
     return NextResponse.json({ success: true });

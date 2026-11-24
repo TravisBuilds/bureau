@@ -3,7 +3,7 @@
  * Functions for revoking and managing OAuth grants
  */
 
-import { query } from './db';
+import { query, withUser } from './db';
 
 /**
  * Revoke an OAuth grant
@@ -14,15 +14,18 @@ export async function revokeGrant(
   userId: string,
   workspaceId: string
 ): Promise<boolean> {
-  const result = await query<{ revoked: boolean }>(
-    `UPDATE bureau.oauth_grants 
-     SET status = 'revoked', revoked_at = NOW(), revoked_reason = 'User revoked'
-     WHERE id = $1 AND workspace_id = $2 AND user_id = $3 AND status = 'active'
-     RETURNING true as revoked`,
-    [grantId, workspaceId, userId]
+  // Run as the owning user so the oauth_grants RLS update policy applies
+  const rowCount = await withUser(userId, '', async (client) =>
+    (await client.query(
+      `UPDATE bureau.oauth_grants 
+       SET status = 'revoked', revoked_at = NOW(), revoked_reason = 'User revoked'
+       WHERE id = $1 AND workspace_id = $2 AND user_id = $3 AND status = 'active'
+       RETURNING true as revoked`,
+      [grantId, workspaceId, userId]
+    )).rowCount ?? 0
   );
   
-  return result.length > 0;
+  return rowCount > 0;
 }
 
 /**

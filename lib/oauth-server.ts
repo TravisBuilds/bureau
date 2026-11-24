@@ -159,7 +159,7 @@ export async function exchangeCode(
   
   // Grant, agent link and hidden ingest token are written as the approving user,
   // so the oauth_grants / agent_links RLS policies (auth.uid() + user_workspaces()) pass.
-  const { grantId } = await withUser(codeData.user_id, '', async (client) => {
+  const { grantId, agentLinkId } = await withUser(codeData.user_id, '', async (client) => {
     const grantRows = await client.query(
       `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes, resource)
        VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
@@ -187,7 +187,7 @@ export async function exchangeCode(
       ON CONFLICT DO NOTHING`,
       [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
     );
-    return { grantId };
+    return { grantId, agentLinkId };
   });
 
   // Mint tokens
@@ -196,8 +196,8 @@ export async function exchangeCode(
   const familyId = crypto.randomUUID();
   
   await query(
-    `SELECT bureau.mint_oauth_tokens($1, $2, $3, $4, $5, $6)`,
-    [grantId, accessHash, accessPrefix, refreshHash, refreshPrefix, familyId]
+    `SELECT bureau.mint_link_tokens($1, $2, $3, $4, $5, $6, $7)`,
+    [grantId, agentLinkId, accessHash, accessPrefix, refreshHash, refreshPrefix, familyId]
   );
   
   return {
@@ -222,29 +222,21 @@ export async function refreshAccessToken(
   
   try {
     // Rotate via SECURITY DEFINER function (handles reuse detection)
+    // Rotate + mint the new access token atomically, both bound to the old token's agent link
+    const { token: accessToken, hash: accessHash, tokenPrefix: accessPrefix } = generateToken('bureau_at_');
     const rotateRows = await query<{
       grant_id: string;
       family_id: string;
       workspace_id: string;
       user_id: string;
     }>(
-      `SELECT * FROM bureau.rotate_refresh_token($1, $2, $3)`,
-      [oldHash, newHash, newPrefix]
+      `SELECT * FROM bureau.rotate_link_refresh_token($1, $2, $3, $4, $5)`,
+      [oldHash, newHash, newPrefix, accessHash, accessPrefix]
     );
     
     if (rotateRows.length === 0) {
       throw new Error('INVALID_REFRESH_TOKEN');
     }
-    
-    const { grant_id, family_id, workspace_id, user_id } = rotateRows[0];
-    
-    // Mint new access token via SECURITY DEFINER
-    const { token: accessToken, hash: accessHash, tokenPrefix: accessPrefix } = generateToken('bureau_at_');
-    
-    await query(
-      `SELECT bureau.mint_access_token($1, $2, $3)`,
-      [grant_id, accessHash, accessPrefix]
-    );
     
     return {
       accessToken,
@@ -387,7 +379,7 @@ export async function pollDeviceCode(
   );
   
   // Create grant + agent link as the approving user so RLS (auth.uid() + user_workspaces()) passes
-  const grantId = await withUser(device.user_id, '', async (client) => {
+  const { grantId, agentLinkId } = await withUser(device.user_id, '', async (client) => {
     const grantRows = await client.query(
       `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
        VALUES ($1, $2, 'script-device', 'script', $3)
@@ -397,15 +389,16 @@ export async function pollDeviceCode(
       [device.workspace_id, device.user_id, device.scopes]
     );
     const id: string = grantRows.rows[0].id;
-    await client.query(
+    const linkRows = await client.query(
       `INSERT INTO bureau.agent_links (
         workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
       ) VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (grant_id, agent_label)
-      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'`,
+      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'
+      RETURNING id`,
       [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
     );
-    return id;
+    return { grantId: id, agentLinkId: linkRows.rows[0].id as string };
   });
 
   // Mint tokens
@@ -414,8 +407,8 @@ export async function pollDeviceCode(
   const familyId = crypto.randomUUID();
   
   await query(
-    `SELECT bureau.mint_oauth_tokens($1, $2, $3, $4, $5, $6)`,
-    [grantId, accessHash, accessPrefix, refreshHash, refreshPrefix, familyId]
+    `SELECT bureau.mint_link_tokens($1, $2, $3, $4, $5, $6, $7)`,
+    [grantId, agentLinkId, accessHash, accessPrefix, refreshHash, refreshPrefix, familyId]
   );
   
   return {

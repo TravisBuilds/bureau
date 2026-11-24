@@ -43,13 +43,17 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Check all redirect_uris are https (or localhost for dev)
+    // Check all redirect_uris are https, localhost, or cursor:// private-use scheme (RFC 8252)
     for (const uri of redirect_uris) {
       try {
         const url = new URL(uri);
-        if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+        const isHttps = url.protocol === 'https:';
+        const isLoopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+        const isCursorScheme = url.protocol === 'cursor:';
+        
+        if (!isHttps && !isLoopback && !isCursorScheme) {
           return NextResponse.json(
-            { error: 'invalid_redirect_uri', error_description: `Redirect URI must be https or localhost: ${uri}` },
+            { error: 'invalid_redirect_uri', error_description: `Redirect URI must be https, localhost, or cursor://: ${uri}` },
             { status: 400 }
           );
         }
@@ -61,41 +65,43 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Generate client credentials
+    // Generate client_id (public client, no secret per RFC 7591 for token_endpoint_auth_method=none)
     const clientId = `dcr_${crypto.randomBytes(16).toString('hex')}`;
-    const clientSecret = crypto.randomBytes(32).toString('base64url');
     
-    // Store in DB (marked as unverified DCR client)
+    // Infer vendor from redirect_uri
+    let vendor = 'other';
+    const firstUri = redirect_uris[0].toLowerCase();
+    if (firstUri.includes('claude.ai')) vendor = 'other'; // Will be 'anthropic' after optional migration
+    else if (firstUri.includes('cursor.com') || firstUri.includes('cursor://')) vendor = 'cursor';
+    else if (firstUri.includes('chatgpt.com') || firstUri.includes('openai.com')) vendor = 'openai';
+    else if (firstUri.includes('grok.com')) vendor = 'grokbot';
+    
+    // Store in DB (only columns that exist in bureau.oauth_clients)
     await query(
       `INSERT INTO bureau.oauth_clients (
-        client_id, client_secret, client_name, client_uri,
-        redirect_uris, grant_types, response_types, scope,
-        registration_method, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'dcr', NOW())`,
+        client_id, client_name, client_uri, redirect_uris, 
+        registration, vendor, verified, created_by, metadata
+      ) VALUES ($1, $2, $3, $4, 'dcr', $5, FALSE, NULL, '{}'::jsonb)`,
       [
         clientId,
-        clientSecret,
         client_name || 'Unknown Client',
         client_uri || null,
         redirect_uris,
-        grant_types || ['authorization_code', 'refresh_token'],
-        response_types || ['code'],
-        scope || 'ingest:write'
+        vendor
       ]
     );
     
-    // Return RFC 7591 client information response
+    // Return RFC 7591 client information response (public client)
     return NextResponse.json({
       client_id: clientId,
-      client_secret: clientSecret,
       client_id_issued_at: Math.floor(Date.now() / 1000),
       client_name: client_name || 'Unknown Client',
       client_uri: client_uri || undefined,
       redirect_uris,
       grant_types: grant_types || ['authorization_code', 'refresh_token'],
       response_types: response_types || ['code'],
-      token_endpoint_auth_method: 'client_secret_basic',
-      scope: scope || 'ingest:write'
+      token_endpoint_auth_method: 'none',
+      scope: scope || 'ingest:write clone:write questions:read questions:write'
     }, { status: 201 });
     
   } catch (error) {

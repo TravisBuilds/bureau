@@ -25,9 +25,6 @@ CREATE TABLE bureau.digital_clones (
   slack_handle TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   last_seen_at TIMESTAMPTZ,
-  is_stale BOOLEAN GENERATED ALWAYS AS (
-    last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '26 hours'
-  ) STORED,
   metadata JSONB DEFAULT '{}'::jsonb,
   UNIQUE(workspace_id, handle)
 );
@@ -35,7 +32,7 @@ CREATE TABLE bureau.digital_clones (
 CREATE INDEX idx_digital_clones_workspace ON bureau.digital_clones(workspace_id);
 CREATE INDEX idx_digital_clones_owner ON bureau.digital_clones(owner_user_id);
 CREATE INDEX idx_digital_clones_agent_link ON bureau.digital_clones(agent_link_id);
-CREATE INDEX idx_digital_clones_stale ON bureau.digital_clones(workspace_id, is_stale);
+CREATE INDEX idx_digital_clones_last_seen ON bureau.digital_clones(last_seen_at);
 
 COMMENT ON TABLE bureau.digital_clones IS 'Digital clone registrations per team member';
 
@@ -130,17 +127,27 @@ CREATE OR REPLACE FUNCTION bureau.register_clone(
 ) RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 DECLARE
   v_clone_id UUID;
+  v_existing_owner UUID;
 BEGIN
   -- Validate handle (alphanumeric, underscore, hyphen only)
   IF p_handle !~ '^[a-zA-Z0-9_-]+$' THEN
     RAISE EXCEPTION 'Invalid handle. Use only letters, numbers, underscore, and hyphen';
   END IF;
   
-  -- Insert or update clone
+  -- Check if handle is already taken by another owner
+  SELECT owner_user_id INTO v_existing_owner
+  FROM bureau.digital_clones
+  WHERE workspace_id = p_workspace_id AND handle = p_handle;
+  
+  IF v_existing_owner IS NOT NULL AND v_existing_owner != p_owner_user_id THEN
+    RAISE EXCEPTION 'HANDLE_TAKEN';
+  END IF;
+  
+  -- Insert or update clone (only owner can update)
   INSERT INTO bureau.digital_clones (
     workspace_id, owner_user_id, agent_link_id, display_name, handle, 
     vendor, protocol, timezone, working_hours, slack_handle, last_seen_at
@@ -150,22 +157,31 @@ BEGIN
   )
   ON CONFLICT (workspace_id, handle) 
   DO UPDATE SET
-    display_name = p_display_name,
-    vendor = p_vendor,
-    timezone = p_timezone,
-    working_hours = p_working_hours,
-    slack_handle = p_slack_handle,
-    last_seen_at = NOW()
+    display_name = EXCLUDED.display_name,
+    vendor = EXCLUDED.vendor,
+    timezone = EXCLUDED.timezone,
+    working_hours = EXCLUDED.working_hours,
+    slack_handle = EXCLUDED.slack_handle,
+    last_seen_at = NOW(),
+    agent_link_id = EXCLUDED.agent_link_id
+  WHERE digital_clones.owner_user_id = p_owner_user_id
   RETURNING id INTO v_clone_id;
+  
+  IF v_clone_id IS NULL THEN
+    RAISE EXCEPTION 'HANDLE_TAKEN';
+  END IF;
   
   RETURN v_clone_id;
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.register_clone FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.register_clone TO bureau_app;
 
 -- Function: update clone profile (via MCP)
 CREATE OR REPLACE FUNCTION bureau.update_clone_profile(
+  p_workspace_id UUID,
+  p_owner_user_id UUID,
   p_clone_id UUID,
   p_responsibilities TEXT DEFAULT NULL,
   p_active_work TEXT DEFAULT NULL,
@@ -175,9 +191,17 @@ CREATE OR REPLACE FUNCTION bureau.update_clone_profile(
 ) RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 BEGIN
+  -- Verify clone belongs to this workspace and owner
+  IF NOT EXISTS (
+    SELECT 1 FROM bureau.digital_clones
+    WHERE id = p_clone_id AND workspace_id = p_workspace_id AND owner_user_id = p_owner_user_id
+  ) THEN
+    RAISE EXCEPTION 'Clone not found or access denied';
+  END IF;
+  
   INSERT INTO bureau.clone_profiles (
     clone_id, responsibilities, active_work, decisions_pending, recent_output, availability, updated_at
   ) VALUES (
@@ -199,10 +223,13 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.update_clone_profile FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.update_clone_profile TO bureau_app;
 
 -- Function: post heartbeat (via MCP)
 CREATE OR REPLACE FUNCTION bureau.post_clone_heartbeat(
+  p_workspace_id UUID,
+  p_owner_user_id UUID,
   p_clone_id UUID,
   p_date DATE,
   p_top_priority TEXT,
@@ -217,9 +244,17 @@ CREATE OR REPLACE FUNCTION bureau.post_clone_heartbeat(
 ) RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 BEGIN
+  -- Verify clone belongs to this workspace and owner
+  IF NOT EXISTS (
+    SELECT 1 FROM bureau.digital_clones
+    WHERE id = p_clone_id AND workspace_id = p_workspace_id AND owner_user_id = p_owner_user_id
+  ) THEN
+    RAISE EXCEPTION 'Clone not found or access denied';
+  END IF;
+  
   INSERT INTO bureau.clone_heartbeats (
     clone_id, date, top_priority, active, blocked, decisions_waiting_on_me,
     waiting_on_others, shipped_since_last, helping, out_of_office, confidence
@@ -247,6 +282,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.post_clone_heartbeat FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.post_clone_heartbeat TO bureau_app;
 
 -- Function: get team health data (via MCP)
@@ -264,7 +300,7 @@ CREATE OR REPLACE FUNCTION bureau.get_team_health(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -272,13 +308,13 @@ BEGIN
     dc.id,
     dc.display_name,
     dc.handle,
-    au.email as owner_email,
-    dc.is_stale,
+    wm.email as owner_email,
+    (dc.last_seen_at IS NULL OR dc.last_seen_at < NOW() - INTERVAL '26 hours') as is_stale,
     dc.last_seen_at,
     to_jsonb(h.*) as latest_heartbeat,
     to_jsonb(cp.*) as profile
   FROM bureau.digital_clones dc
-  JOIN auth.users au ON au.id = dc.owner_user_id
+  JOIN bureau.workspace_members wm ON wm.workspace_id = dc.workspace_id AND wm.user_id = dc.owner_user_id AND wm.removed_at IS NULL
   LEFT JOIN LATERAL (
     SELECT * FROM bureau.clone_heartbeats
     WHERE clone_id = dc.id
@@ -287,10 +323,11 @@ BEGIN
   ) h ON TRUE
   LEFT JOIN bureau.clone_profiles cp ON cp.clone_id = dc.id
   WHERE dc.workspace_id = p_workspace_id
-  ORDER BY dc.is_stale, dc.display_name;
+  ORDER BY (dc.last_seen_at IS NULL OR dc.last_seen_at < NOW() - INTERVAL '26 hours'), dc.display_name;
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.get_team_health FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.get_team_health TO bureau_app;
 
 COMMENT ON FUNCTION bureau.register_clone IS 'Register or update a digital clone (via MCP)';

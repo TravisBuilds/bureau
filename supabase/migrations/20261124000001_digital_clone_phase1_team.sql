@@ -4,15 +4,13 @@
 
 SET search_path TO bureau, extensions;
 
--- Update workspace_members to add admin role
-ALTER TABLE bureau.workspace_members 
-  DROP CONSTRAINT IF EXISTS workspace_members_role_check;
-
-DROP TYPE IF EXISTS bureau.member_role CASCADE;
-CREATE TYPE bureau.member_role AS ENUM ('owner', 'admin', 'member');
-
-ALTER TABLE bureau.workspace_members 
-  ALTER COLUMN role TYPE bureau.member_role USING role::text::bureau.member_role;
+-- Add admin role to member_role enum if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'admin' AND enumtypid = 'bureau.member_role'::regtype) THEN
+    ALTER TYPE bureau.member_role ADD VALUE 'admin';
+  END IF;
+END $$;
 
 -- Add invite fields to workspace_members
 ALTER TABLE bureau.workspace_members
@@ -90,10 +88,14 @@ DECLARE
   v_invite_id UUID;
   v_inviter_role bureau.member_role;
 BEGIN
-  -- Check if inviter is owner or admin
+  -- Check if inviter is active owner or admin
   SELECT role INTO v_inviter_role
   FROM bureau.workspace_members
-  WHERE workspace_id = p_workspace_id AND user_id = p_invited_by;
+  WHERE workspace_id = p_workspace_id AND user_id = p_invited_by AND removed_at IS NULL;
+  
+  IF v_inviter_role IS NULL THEN
+    RAISE EXCEPTION 'User is not a member of this workspace';
+  END IF;
   
   IF v_inviter_role NOT IN ('owner', 'admin') THEN
     RAISE EXCEPTION 'Only owners and admins can invite members';
@@ -134,6 +136,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.invite_member FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.invite_member TO bureau_app;
 
 -- Function: accept invite (called on sign-in)
@@ -150,7 +153,7 @@ SECURITY DEFINER
 SET search_path = bureau, extensions
 AS $$
 BEGIN
-  -- Mark invites as accepted and add to workspace_members
+  -- Mark invites as accepted and add to workspace_members (or reactivate if removed)
   INSERT INTO bureau.workspace_members (workspace_id, user_id, role, invited_at, joined_at, invited_by)
   SELECT i.workspace_id, p_user_id, i.role, i.invited_at, NOW(), i.invited_by
   FROM bureau.workspace_invites i
@@ -158,7 +161,8 @@ BEGIN
     AND i.accepted_at IS NULL 
     AND i.revoked_at IS NULL
     AND i.expires_at > NOW()
-  ON CONFLICT (workspace_id, user_id) DO NOTHING;
+  ON CONFLICT (workspace_id, user_id) DO UPDATE
+  SET removed_at = NULL, removed_by = NULL, role = EXCLUDED.role, joined_at = NOW();
   
   -- Mark invites as accepted
   UPDATE bureau.workspace_invites
@@ -177,6 +181,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.accept_invite FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.accept_invite TO bureau_app;
 
 -- Function: remove member (owner only, cannot remove last owner)
@@ -194,10 +199,14 @@ DECLARE
   v_target_role bureau.member_role;
   v_owner_count INTEGER;
 BEGIN
-  -- Check if remover is owner
+  -- Check if remover is active owner
   SELECT role INTO v_remover_role
   FROM bureau.workspace_members
-  WHERE workspace_id = p_workspace_id AND user_id = p_removed_by;
+  WHERE workspace_id = p_workspace_id AND user_id = p_removed_by AND removed_at IS NULL;
+  
+  IF v_remover_role IS NULL THEN
+    RAISE EXCEPTION 'User is not a member of this workspace';
+  END IF;
   
   IF v_remover_role != 'owner' THEN
     RAISE EXCEPTION 'Only owners can remove members';
@@ -234,10 +243,21 @@ BEGIN
   SET status = 'revoked', revoked_at = NOW(), revoked_reason = 'Member removed from workspace'
   WHERE workspace_id = p_workspace_id AND user_id = p_user_id_to_remove;
   
+  -- Revoke all legacy ingest tokens for this user in this workspace
+  UPDATE bureau.ingest_tokens
+  SET revoked_at = NOW()
+  WHERE workspace_id = p_workspace_id 
+    AND id IN (
+      SELECT t.id FROM bureau.ingest_tokens t
+      JOIN bureau.workspaces w ON w.id = t.workspace_id
+      WHERE t.workspace_id = p_workspace_id AND w.created_by = p_user_id_to_remove
+    );
+  
   RETURN TRUE;
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.remove_member FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.remove_member TO bureau_app;
 
 COMMENT ON FUNCTION bureau.invite_member IS 'Invite a member by email (owner/admin only)';

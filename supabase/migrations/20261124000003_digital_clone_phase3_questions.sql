@@ -73,6 +73,8 @@ CREATE POLICY questions_update ON bureau.questions
 
 -- Function: get questions for a clone (via MCP)
 CREATE OR REPLACE FUNCTION bureau.get_clone_questions(
+  p_workspace_id UUID,
+  p_owner_user_id UUID,
   p_clone_id UUID,
   p_status bureau.question_status DEFAULT NULL
 ) RETURNS TABLE (
@@ -84,37 +86,60 @@ CREATE OR REPLACE FUNCTION bureau.get_clone_questions(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 BEGIN
+  -- Verify clone belongs to this workspace and owner
+  IF NOT EXISTS (
+    SELECT 1 FROM bureau.digital_clones
+    WHERE id = p_clone_id AND workspace_id = p_workspace_id AND owner_user_id = p_owner_user_id
+  ) THEN
+    RAISE EXCEPTION 'Clone not found or access denied';
+  END IF;
+  
   RETURN QUERY
   SELECT 
     q.id,
-    COALESCE(q.asker_name, au.email) as asker_name,
+    COALESCE(q.asker_name, wm.email) as asker_name,
     q.question_text,
     q.status,
     q.asked_at
   FROM bureau.questions q
-  LEFT JOIN auth.users au ON au.id = q.asker_user_id
+  LEFT JOIN bureau.workspace_members wm ON wm.workspace_id = q.workspace_id AND wm.user_id = q.asker_user_id AND wm.removed_at IS NULL
   WHERE q.target_clone_id = p_clone_id
+    AND q.workspace_id = p_workspace_id
     AND (p_status IS NULL OR q.status = p_status)
   ORDER BY q.asked_at DESC;
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.get_clone_questions FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.get_clone_questions TO bureau_app;
 
 -- Function: answer question (via MCP)
 CREATE OR REPLACE FUNCTION bureau.answer_question(
+  p_workspace_id UUID,
+  p_owner_user_id UUID,
   p_question_id UUID,
   p_answer_text TEXT,
   p_answered_by_clone BOOLEAN DEFAULT TRUE
 ) RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 BEGIN
+  -- Verify question is in workspace and targets a clone owned by this user
+  IF NOT EXISTS (
+    SELECT 1 FROM bureau.questions q
+    JOIN bureau.digital_clones dc ON dc.id = q.target_clone_id
+    WHERE q.id = p_question_id 
+      AND q.workspace_id = p_workspace_id 
+      AND dc.owner_user_id = p_owner_user_id
+  ) THEN
+    RAISE EXCEPTION 'Question not found or access denied';
+  END IF;
+  
   UPDATE bureau.questions
   SET 
     answer_text = p_answer_text,
@@ -127,20 +152,34 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.answer_question FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.answer_question TO bureau_app;
 
 -- Function: escalate question (via MCP)
 CREATE OR REPLACE FUNCTION bureau.escalate_question(
+  p_workspace_id UUID,
+  p_owner_user_id UUID,
   p_question_id UUID,
   p_escalation_reason TEXT
 ) RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 DECLARE
   v_target_user_id UUID;
 BEGIN
+  -- Verify question is in workspace and targets a clone owned by this user
+  IF NOT EXISTS (
+    SELECT 1 FROM bureau.questions q
+    JOIN bureau.digital_clones dc ON dc.id = q.target_clone_id
+    WHERE q.id = p_question_id 
+      AND q.workspace_id = p_workspace_id 
+      AND dc.owner_user_id = p_owner_user_id
+  ) THEN
+    RAISE EXCEPTION 'Question not found or access denied';
+  END IF;
+  
   -- Get target user from clone
   SELECT owner_user_id INTO v_target_user_id
   FROM bureau.questions q
@@ -159,28 +198,39 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.escalate_question FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.escalate_question TO bureau_app;
 
 -- Function: ask question (via web/MCP)
 CREATE OR REPLACE FUNCTION bureau.ask_question(
   p_workspace_id UUID,
+  p_question_text TEXT,
   p_asker_user_id UUID DEFAULT NULL,
   p_asker_name TEXT DEFAULT NULL,
   p_asker_slack_user_id TEXT DEFAULT NULL,
   p_target_clone_id UUID DEFAULT NULL,
   p_target_user_id UUID DEFAULT NULL,
-  p_source bureau.question_source DEFAULT 'web',
-  p_question_text TEXT
+  p_source bureau.question_source DEFAULT 'web'
 ) RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 DECLARE
   v_question_id UUID;
 BEGIN
   IF p_target_clone_id IS NULL AND p_target_user_id IS NULL THEN
     RAISE EXCEPTION 'Must specify either target_clone_id or target_user_id';
+  END IF;
+  
+  -- Verify target_clone_id is in this workspace if provided
+  IF p_target_clone_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM bureau.digital_clones
+      WHERE id = p_target_clone_id AND workspace_id = p_workspace_id
+    ) THEN
+      RAISE EXCEPTION 'Clone not found in this workspace';
+    END IF;
   END IF;
   
   INSERT INTO bureau.questions (
@@ -196,6 +246,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION bureau.ask_question FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.ask_question TO bureau_app;
 
 COMMENT ON FUNCTION bureau.get_clone_questions IS 'Get questions for a clone (via MCP)';

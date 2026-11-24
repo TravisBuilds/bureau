@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { startDeviceFlow } from '@/lib/oauth-server';
 
+// Scope allowlist
+const ALLOWED_SCOPES = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
+
 /**
  * POST /api/oauth/device - RFC 8628 Device Authorization Grant
  * For scripts/CLIs without a browser
@@ -42,12 +45,8 @@ export async function POST(request: NextRequest) {
       expires_in: result.expiresIn,
       interval: result.interval
     });
-    
   } catch (error) {
-    console.error('Device authorization error:', error);
-    return NextResponse.json(
-      { error: 'server_error', error_description: 'Failed to initiate device flow' },
-      { status: 500 }
-    );
+    console.error('Device flow error:', error);
+    return NextResponse.json({ error: 'server_error' }, { status: 500 });
   }
 }

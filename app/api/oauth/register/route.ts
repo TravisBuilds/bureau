@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import crypto from 'crypto';
 
+// Scope allowlist
+const ALLOWED_SCOPES = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
+
 /**
  * POST /api/oauth/register - RFC 7591 Dynamic Client Registration
  * Fallback for clients that don't publish CIMD documents
@@ -40,101 +43,60 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    if (!client_name) {
-      return NextResponse.json(
-        { error: 'invalid_client_metadata', error_description: 'client_name is required' },
-        { status: 400 }
-      );
-    }
-    
-    // Validate all redirect URIs (HTTPS or localhost only)
+    // Check all redirect_uris are https (or localhost for dev)
     for (const uri of redirect_uris) {
       try {
         const url = new URL(uri);
         if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
           return NextResponse.json(
-            { error: 'invalid_redirect_uri', error_description: `Redirect URI must be HTTPS or localhost: ${uri}` },
+            { error: 'invalid_redirect_uri', error_description: `Redirect URI must be https or localhost: ${uri}` },
             { status: 400 }
           );
         }
       } catch {
         return NextResponse.json(
-          { error: 'invalid_redirect_uri', error_description: `Invalid URI format: ${uri}` },
+          { error: 'invalid_redirect_uri', error_description: `Malformed redirect URI: ${uri}` },
           { status: 400 }
         );
       }
     }
     
-    // Validate redirect host allowlist (env-configurable)
-    // Defaults from vendor documentation:
-    // - chatgpt.com, chat.openai.com: ChatGPT custom MCP server callbacks
-    //   Source: https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt
-    // - www.cursor.com: Cursor MCP OAuth callback
-    //   Source: https://cursor.com/docs/mcp (fixed callback: https://www.cursor.com/agents/mcp/oauth/callback)
-    // - localhost, 127.0.0.1: Local development
-    // 
-    // Grok Bot callback host is not documented publicly; leave configurable via env.
-    // Set BUREAU_OAUTH_REDIRECT_HOSTS to add additional hosts (comma-separated).
-    const defaultHosts = [
-      'chatgpt.com',
-      'chat.openai.com', 
-      'www.cursor.com',
-      'localhost',
-      '127.0.0.1'
-    ];
-    
-    const envHosts = process.env.BUREAU_OAUTH_REDIRECT_HOSTS 
-      ? process.env.BUREAU_OAUTH_REDIRECT_HOSTS.split(',').map(h => h.trim()).filter(Boolean)
-      : [];
-    
-    const allowedHosts = [...defaultHosts, ...envHosts];
-    
-    for (const uri of redirect_uris) {
-      const url = new URL(uri);
-      if (!allowedHosts.includes(url.hostname)) {
-        return NextResponse.json(
-          { error: 'invalid_redirect_uri', error_description: `Redirect host not allowed in pilot: ${url.hostname}. Contact support.` },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Generate client_id (dcr prefix for unverified)
+    // Generate client credentials
     const clientId = `dcr_${crypto.randomBytes(16).toString('hex')}`;
+    const clientSecret = crypto.randomBytes(32).toString('base64url');
     
-    // Infer vendor from redirect URI
-    let vendor = 'other';
-    const firstRedirect = new URL(redirect_uris[0]);
-    if (firstRedirect.hostname.includes('openai.com') || firstRedirect.hostname.includes('chatgpt.com')) {
-      vendor = 'openai';
-    } else if (firstRedirect.hostname.includes('cursor.com')) {
-      vendor = 'cursor';
-    } else if (firstRedirect.hostname === 'localhost' || firstRedirect.hostname === '127.0.0.1') {
-      vendor = 'script';
-    }
-    
-    // Store client
+    // Store in DB (marked as unverified DCR client)
     await query(
       `INSERT INTO bureau.oauth_clients (
-        client_id, client_name, client_uri, redirect_uris, 
-        registration, vendor, verified
-      ) VALUES ($1, $2, $3, $4, 'dcr', $5, false)`,
-      [clientId, client_name, client_uri || null, redirect_uris, vendor]
+        client_id, client_secret, client_name, client_uri,
+        redirect_uris, grant_types, response_types, scope,
+        registration_method, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'dcr', NOW())`,
+      [
+        clientId,
+        clientSecret,
+        client_name || 'Unknown Client',
+        client_uri || null,
+        redirect_uris,
+        grant_types || ['authorization_code', 'refresh_token'],
+        response_types || ['code'],
+        scope || 'ingest:write'
+      ]
     );
     
-    // Return RFC 7591 response
+    // Return RFC 7591 client information response
     return NextResponse.json({
       client_id: clientId,
-      client_name,
+      client_secret: clientSecret,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_name: client_name || 'Unknown Client',
       client_uri: client_uri || undefined,
       redirect_uris,
       grant_types: grant_types || ['authorization_code', 'refresh_token'],
       response_types: response_types || ['code'],
-      token_endpoint_auth_method: 'none',
-      registration_access_token: undefined, // We don't support client config updates
-      registration_client_uri: undefined,
-      client_id_issued_at: Math.floor(Date.now() / 1000)
-    });
+      token_endpoint_auth_method: 'client_secret_basic',
+      scope: scope || 'ingest:write'
+    }, { status: 201 });
     
   } catch (error) {
     console.error('DCR error:', error);

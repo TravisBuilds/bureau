@@ -89,8 +89,44 @@ export async function POST(request: NextRequest) {
       } as MCPResponse);
     }
     
-    // 3. Handle MCP methods
+    // 3. Handle MCP protocol methods
     const { method, params, id } = mcpRequest;
+    
+    // initialize - protocol handshake
+    if (method === 'initialize') {
+      const clientVersion = params?.protocolVersion || '2024-11-05';
+      const supportedVersions = ['2024-11-05', '2025-06-18'];
+      const negotiatedVersion = supportedVersions.includes(clientVersion) ? clientVersion : '2025-06-18';
+      
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: negotiatedVersion,
+          capabilities: {
+            tools: {}
+          },
+          serverInfo: {
+            name: 'Bureau MCP Server',
+            version: '1.0.0'
+          }
+        }
+      } as MCPResponse);
+    }
+
+    // notifications/initialized - client confirms initialization (202 empty per spec)
+    if (method === 'notifications/initialized') {
+      return new NextResponse(null, { status: 202 });
+    }
+
+    // ping - keepalive
+    if (method === 'ping') {
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id,
+        result: {}
+      } as MCPResponse);
+    }
     
     // tools/list - List available tools
     if (method === 'tools/list') {

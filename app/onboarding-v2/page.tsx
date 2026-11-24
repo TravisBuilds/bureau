@@ -94,9 +94,9 @@ export default function OnboardingV2Page() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Cost your last video</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome to Bureau</h1>
           <p className="text-gray-600">
-            Know what your last video cost before you make the next one.
+            Your team's command center: what needs you today, and what your agents can handle.
           </p>
         </div>
 

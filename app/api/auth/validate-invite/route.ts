@@ -22,6 +22,17 @@ export async function POST(request: NextRequest) {
     );
     
     if (invite.length === 0) {
+      // Check if this looks like a device code (BURE-XXXX format)
+      if (/^BURE-[A-Z0-9]{4}$/i.test(code)) {
+        const signInUrl = `/auth/signin?next=${encodeURIComponent(`/connect/device?user_code=${code}`)}`;
+        return NextResponse.json({ 
+          error: 'That looks like a bot-connect code. Sign in first, then enter it on the connect page.',
+          valid: false,
+          isDeviceCode: true,
+          signInUrl
+        }, { status: 400 });
+      }
+      
       return NextResponse.json({ 
         error: 'Invalid or expired invite code',
         valid: false 

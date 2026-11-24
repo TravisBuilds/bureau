@@ -79,7 +79,9 @@ export async function middleware(request: NextRequest) {
     }
     
     const signInUrl = new URL('/auth/signin', request.url);
-    signInUrl.searchParams.set('next', pathname);
+    // Preserve full path + query string, safely (same-origin only, no open redirect)
+    const nextPath = pathname + (request.nextUrl.search || '');
+    signInUrl.searchParams.set('next', nextPath);
     return NextResponse.redirect(signInUrl);
   }
 

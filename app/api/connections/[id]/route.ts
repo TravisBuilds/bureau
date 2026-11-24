@@ -8,7 +8,7 @@ import { query } from '@/lib/db';
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireAuth();
@@ -17,7 +17,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
     
-    const connectionId = params.id;
+    const { id: connectionId } = await params;
     
     // Revoke grant (resolve_credential checks grant status, so this effectively invalidates all tokens)
     const revoked = await revokeGrant(connectionId, user.id, user.workspaceId);

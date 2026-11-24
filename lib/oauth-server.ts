@@ -412,10 +412,11 @@ export async function pollDeviceCode(
     const agentLinkId: string = linkRows.rows[0].id;
     
     // Auto-create clone for device flow
-    const handle = device.agent_label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const label = device.agent_label || 'Script Bot';
+    const handle = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     await client.query(
       `SELECT bureau.register_clone($1, $2, $3, $4, $5, 'script', 'mcp', NULL, NULL, NULL)`,
-      [device.workspace_id, device.user_id, agentLinkId, device.agent_label, handle]
+      [device.workspace_id, device.user_id, agentLinkId, label, handle]
     );
     
     return { grantId: id, agentLinkId };

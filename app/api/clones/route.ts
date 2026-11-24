@@ -15,8 +15,7 @@ export async function GET(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const clones = await withUser(user.id, user.email, async (client) => {
-      return (await client.query<{
+    const clones = await withUser(user.id, user.email, async (client): Promise<Array<{
       id: string;
       display_name: string;
       handle: string;
@@ -26,7 +25,8 @@ export async function GET(request: NextRequest) {
       owner_email: string;
       last_seen_at: Date | null;
       is_stale: boolean;
-    }>(
+    }>> => {
+      const result = await client.query(
       `SELECT 
         dc.id,
         dc.display_name,
@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
        WHERE dc.workspace_id = $1
        ORDER BY dc.display_name`,
         [user.workspaceId]
-      )).rows;
+      );
+      return result.rows;
     });
 
     return NextResponse.json({ clones });

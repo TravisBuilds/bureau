@@ -16,8 +16,7 @@ export async function GET(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const questions = await withUser(user.id, user.email, async (client) => {
-      return (await client.query<{
+    const questions = await withUser(user.id, user.email, async (client): Promise<Array<{
       id: string;
       asker_name: string;
       question_text: string;
@@ -28,7 +27,8 @@ export async function GET(request: NextRequest) {
       clone_display_name: string | null;
       asked_at: Date;
       answered_at: Date | null;
-    }>(
+    }>> => {
+      const result = await client.query(
       `SELECT 
         q.id,
         COALESCE(q.asker_name, wm.email) as asker_name,
@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
        ORDER BY q.asked_at DESC
        LIMIT 100`,
         [user.workspaceId]
-      )).rows;
+      );
+      return result.rows;
     });
 
     return NextResponse.json({ questions });
@@ -77,9 +78,9 @@ export async function POST(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const result = await withUser(user.id, user.email, async (client) => {
+    const result = await withUser(user.id, user.email, async (client): Promise<Array<{ ask_question: string }>> => {
       // Verify target_clone_id is in this workspace
-      const cloneCheck = await client.query<{ exists: boolean }>(
+      const cloneCheck = await client.query(
         `SELECT EXISTS(SELECT 1 FROM bureau.digital_clones WHERE id = $1 AND workspace_id = $2) as exists`,
         [target_clone_id, user.workspaceId]
       );
@@ -88,10 +89,11 @@ export async function POST(request: NextRequest) {
         throw new Error('Clone not found in your workspace');
       }
       
-      return (await client.query<{ ask_question: string }>(
+      const questionResult = await client.query(
         `SELECT bureau.ask_question($1, $2, $3, NULL, NULL, $4, NULL, 'web') as ask_question`,
         [user.workspaceId, question_text, user.id, target_clone_id]
-      )).rows;
+      );
+      return questionResult.rows;
     });
 
     return NextResponse.json({ 

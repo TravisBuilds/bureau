@@ -15,17 +15,27 @@ export async function GET(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const { members, invites } = await withUser(user.id, user.email, async (client) => {
+    const { members, invites } = await withUser(user.id, user.email, async (client): Promise<{
+      members: Array<{
+        user_id: string;
+        email: string;
+        role: string;
+        joined_at: Date;
+        invited_at: Date;
+        invited_by: string | null;
+        last_seen_at: Date | null;
+      }>;
+      invites: Array<{
+        id: string;
+        email: string;
+        role: string;
+        invited_at: Date;
+        invited_by: string;
+        expires_at: Date;
+      }>;
+    }> => {
       // Get members (email is in workspace_members, don't join auth.users)
-      const members = (await client.query<{
-      user_id: string;
-      email: string;
-      role: string;
-      joined_at: Date;
-      invited_at: Date;
-      invited_by: string | null;
-      last_seen_at: Date | null;
-    }>(
+      const membersResult = await client.query(
       `SELECT 
         wm.user_id,
         wm.email,
@@ -42,17 +52,10 @@ export async function GET(request: NextRequest) {
        WHERE wm.workspace_id = $1 AND wm.removed_at IS NULL
        ORDER BY wm.role, wm.email`,
         [user.workspaceId]
-      )).rows;
+      );
 
       // Get pending invites
-      const invites = (await client.query<{
-      id: string;
-      email: string;
-      role: string;
-      invited_at: Date;
-      invited_by: string;
-      expires_at: Date;
-    }>(
+      const invitesResult = await client.query(
       `SELECT 
         i.id,
         i.email,
@@ -67,9 +70,9 @@ export async function GET(request: NextRequest) {
          AND i.expires_at > NOW()
        ORDER BY i.invited_at DESC`,
         [user.workspaceId]
-      )).rows;
+      );
       
-      return { members, invites };
+      return { members: membersResult.rows, invites: invitesResult.rows };
     });
 
     return NextResponse.json({ members, invites });

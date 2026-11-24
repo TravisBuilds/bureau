@@ -11,7 +11,8 @@ const pool = new Pool({
   host: 'localhost',
   port: 5432,
   database: 'bureau_test_final',
-  user: 'postgres'
+  user: 'postgres',
+  password: 'postgres_test'
 });
 
 // Test fixture IDs (seeded in setup)
@@ -45,7 +46,7 @@ beforeAll(async () => {
     
     // Create workspaces
     const wsRes = await client.query(`
-      INSERT INTO bureau.workspaces (id, name, owner_id) VALUES
+      INSERT INTO bureau.workspaces (id, name, created_by) VALUES
         (extensions.uuid_generate_v4(), 'Workspace A', $1),
         (extensions.uuid_generate_v4(), 'Workspace B', $2)
       RETURNING id

@@ -16,8 +16,8 @@ BEGIN
   END IF;
 END $$;
 
--- Grant to bureau_app for testing only
-GRANT anon, authenticated TO bureau_app;
+-- Note: bureau_app should NOT have anon/authenticated grants in production
+-- Tests run queries as bureau_app to verify RLS
 
 -- Create extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
@@ -33,11 +33,8 @@ CREATE TABLE IF NOT EXISTS auth.users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Grant for testing
-GRANT SELECT, INSERT, DELETE ON auth.users TO bureau_app;
-
--- Disable RLS for testing
-ALTER TABLE auth.users DISABLE ROW LEVEL SECURITY;
+-- Note: auth.users access is managed by postgres role for seeding
+-- bureau_app should NOT have direct access to auth.users in production
 
 -- Test helper to set user context
 CREATE OR REPLACE FUNCTION auth.set_test_user(user_id UUID)

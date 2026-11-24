@@ -68,7 +68,12 @@ export async function POST(request: NextRequest) {
     if (credRows.length === 0) {
       return new NextResponse(
         JSON.stringify({ error: 'Invalid or revoked token' }),
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'WWW-Authenticate': 'Bearer realm="/mcp", resource_metadata="/.well-known/oauth-protected-resource"'
+          }
+        }
       );
     }
     

@@ -40,6 +40,16 @@ export async function POST(request: NextRequest) {
     if (!approved) {
       return NextResponse.json({ error: 'User denied' }, { status: 403 });
     }
+
+    // Validate scopes against allowlist
+    const requestedScopes = scopes || [];
+    const invalidScopes = requestedScopes.filter((s: string) => !ALLOWED_SCOPES.includes(s));
+    if (invalidScopes.length > 0) {
+      return NextResponse.json({ 
+        error: 'invalid_scope',
+        error_description: `Invalid scopes: ${invalidScopes.join(', ')}`
+      }, { status: 400 });
+    }
     
     // Resolve client (CIMD or DB)
     const { resolveClient: resolveCIMDClient } = await import('@/lib/oauth-cimd');

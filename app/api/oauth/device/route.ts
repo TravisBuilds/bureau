@@ -23,6 +23,15 @@ export async function POST(request: NextRequest) {
     
     const scopes = scope.split(' ').filter(Boolean);
     
+    // Validate scopes against allowlist
+    const invalidScopes = scopes.filter((s: string) => !ALLOWED_SCOPES.includes(s));
+    if (invalidScopes.length > 0) {
+      return NextResponse.json({ 
+        error: 'invalid_scope',
+        error_description: `Invalid scopes: ${invalidScopes.join(', ')}`
+      }, { status: 400 });
+    }
+    
     const result = await startDeviceFlow(clientName, scopes);
     
     return NextResponse.json({

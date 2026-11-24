@@ -27,6 +27,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Validate scopes against allowlist
+    if (scope) {
+      const requestedScopes = scope.split(' ');
+      const invalidScopes = requestedScopes.filter((s: string) => !ALLOWED_SCOPES.includes(s));
+      if (invalidScopes.length > 0) {
+        return NextResponse.json({ 
+          error: 'invalid_scope',
+          error_description: `Invalid scopes: ${invalidScopes.join(', ')}`
+        }, { status: 400 });
+      }
+    }
     
     if (!client_name) {
       return NextResponse.json(

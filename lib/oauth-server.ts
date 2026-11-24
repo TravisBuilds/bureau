@@ -157,7 +157,7 @@ export async function exchangeCode(
     throw new Error('INVALID_PKCE');
   }
   
-  // Grant, agent link and hidden ingest token are written as the approving user,
+  // Grant, agent link, hidden ingest token, and clone are written as the approving user,
   // so the oauth_grants / agent_links RLS policies (auth.uid() + user_workspaces()) pass.
   const { grantId, agentLinkId } = await withUser(codeData.user_id, '', async (client) => {
     const grantRows = await client.query(
@@ -165,10 +165,12 @@ export async function exchangeCode(
        VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
        ON CONFLICT (workspace_id, user_id, client_id)
        DO UPDATE SET last_seen_at = NOW(), status = 'active'
-       RETURNING id`,
+       RETURNING id, vendor`,
       [codeData.workspace_id, codeData.user_id, clientId, codeData.scopes, resource]
     );
     const grantId: string = grantRows.rows[0].id;
+    const vendor: string = grantRows.rows[0].vendor || 'other';
+    
     const agentLinkRows = await client.query(
       `INSERT INTO bureau.agent_links (
         workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
@@ -179,6 +181,7 @@ export async function exchangeCode(
       [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
     );
     const agentLinkId: string = agentLinkRows.rows[0].id;
+    
     const { hash: hiddenHash, tokenPrefix: hiddenPrefix } = generateToken('bureau_hidden_');
     await client.query(
       `INSERT INTO bureau.ingest_tokens (
@@ -187,6 +190,14 @@ export async function exchangeCode(
       ON CONFLICT DO NOTHING`,
       [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
     );
+    
+    // Auto-create the clone for this agent link
+    const handle = codeData.agent_label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    await client.query(
+      `SELECT bureau.register_clone($1, $2, $3, $4, $5, $6, 'mcp', NULL, NULL, NULL)`,
+      [codeData.workspace_id, codeData.user_id, agentLinkId, codeData.agent_label, handle, vendor]
+    );
+    
     return { grantId, agentLinkId };
   });
 
@@ -378,7 +389,7 @@ export async function pollDeviceCode(
     [deviceCodeHash]
   );
   
-  // Create grant + agent link as the approving user so RLS (auth.uid() + user_workspaces()) passes
+  // Create grant + agent link + clone as the approving user so RLS (auth.uid() + user_workspaces()) passes
   const { grantId, agentLinkId } = await withUser(device.user_id, '', async (client) => {
     const grantRows = await client.query(
       `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
@@ -398,7 +409,16 @@ export async function pollDeviceCode(
       RETURNING id`,
       [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
     );
-    return { grantId: id, agentLinkId: linkRows.rows[0].id as string };
+    const agentLinkId: string = linkRows.rows[0].id;
+    
+    // Auto-create clone for device flow
+    const handle = device.agent_label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    await client.query(
+      `SELECT bureau.register_clone($1, $2, $3, $4, $5, 'script', 'mcp', NULL, NULL, NULL)`,
+      [device.workspace_id, device.user_id, agentLinkId, device.agent_label, handle]
+    );
+    
+    return { grantId: id, agentLinkId };
   });
 
   // Mint tokens

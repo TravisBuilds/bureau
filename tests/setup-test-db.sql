@@ -1,38 +1,60 @@
--- Test Database Setup: Stub auth/extensions for local Postgres
--- Bureau uses Supabase auth.users and pgcrypto from extensions schema
+-- Test database setup (NOT for production migrations)
+-- Creates auth schema stubs for local testing only
 
+-- Create schemas
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS extensions;
 
--- Stub auth.users table
+-- Create roles
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN;
+  END IF;
+END $$;
+
+-- Grant to bureau_app for testing only
+GRANT anon, authenticated TO bureau_app;
+
+-- Create extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
+
+-- Minimal auth.users stub
 CREATE TABLE IF NOT EXISTS auth.users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
   email TEXT UNIQUE NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  encrypted_password TEXT,
+  email_confirmed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Stub auth.uid() function (returns current_setting or NULL)
+-- Grant for testing
+GRANT SELECT, INSERT, DELETE ON auth.users TO bureau_app;
+
+-- Disable RLS for testing
+ALTER TABLE auth.users DISABLE ROW LEVEL SECURITY;
+
+-- Test helper to set user context
+CREATE OR REPLACE FUNCTION auth.set_test_user(user_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', user_id::text)::text, false);
+END;
+$$;
+
+-- Stub auth.uid()
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS UUID
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
+  SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid;
 $$;
-
--- Stub auth.set_user() for compatibility
-CREATE OR REPLACE FUNCTION auth.set_user(user_id UUID)
-RETURNS VOID
-LANGUAGE sql
-AS $$
-  SELECT set_config('request.jwt.claim.sub', user_id::text, false);
-$$;
-
--- Install pgcrypto extension for digest() function
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
-
--- Install uuid-ossp for uuid_generate_v4()
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
-
-COMMENT ON SCHEMA auth IS 'Stubbed Supabase auth schema for local tests';
-COMMENT ON SCHEMA extensions IS 'Postgres extensions (pgcrypto, uuid-ossp)';

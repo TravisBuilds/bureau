@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
 
-    const clones = await query<{
+    const { withUser } = await import('@/lib/db');
+    
+    const clones = await withUser(user.id, user.email, async () => {
+      return await query<{
       id: string;
       display_name: string;
       handle: string;
@@ -38,8 +41,9 @@ export async function GET(request: NextRequest) {
        JOIN bureau.workspace_members wm ON wm.workspace_id = dc.workspace_id AND wm.user_id = dc.owner_user_id AND wm.removed_at IS NULL
        WHERE dc.workspace_id = $1
        ORDER BY dc.display_name`,
-      [user.workspaceId]
-    );
+        [user.workspaceId]
+      );
+    });
 
     return NextResponse.json({ clones });
   } catch (error) {

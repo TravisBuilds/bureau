@@ -91,8 +91,8 @@ AS $$
 BEGIN
   -- Verify clone belongs to this workspace and owner
   IF NOT EXISTS (
-    SELECT 1 FROM bureau.digital_clones
-    WHERE id = p_clone_id AND workspace_id = p_workspace_id AND owner_user_id = p_owner_user_id
+    SELECT 1 FROM bureau.digital_clones dc
+    WHERE dc.id = p_clone_id AND dc.workspace_id = p_workspace_id AND dc.owner_user_id = p_owner_user_id
   ) THEN
     RAISE EXCEPTION 'Clone not found or access denied';
   END IF;

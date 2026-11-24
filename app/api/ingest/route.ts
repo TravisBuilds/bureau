@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     const tokenInfo = credRows[0];
     const userEmail = tokenInfo.user_email;
     
-    // Check scopes for OAuth tokens
+    // Check scopes for OAuth tokens (403 for missing scope)
     if (tokenInfo.agent_link_id && !tokenInfo.scopes.includes('ingest:write')) {
       return NextResponse.json({ 
         error: 'Missing required scope: ingest:write' 
@@ -143,9 +143,14 @@ export async function POST(request: NextRequest) {
           if (uuidStreamRows.rows.length > 0) {
             streamId = uuidStreamRows.rows[0].id;
             
-            // For OAuth tokens: check if stream is in allowed list
+            // For OAuth tokens: check if stream is in allowed list (403)
             if (tokenInfo.allowed_stream_ids && streamId && !tokenInfo.allowed_stream_ids.includes(streamId)) {
-              throw new Error('Stream not in allowed list for this token');
+              const errorData = {
+                error: 'Stream not in allowed list for this token',
+                stream_id: streamId
+              };
+              await client.query('ROLLBACK');
+              return NextResponse.json(errorData, { status: 403 });
             }
           } else {
             // UUID format but not an existing stream -> 404
@@ -163,14 +168,24 @@ export async function POST(request: NextRequest) {
           if (streamRows.rows.length > 0) {
             streamId = streamRows.rows[0].id;
             
-            // For OAuth tokens: check if stream is in allowed list
+            // For OAuth tokens: check if stream is in allowed list (403)
             if (tokenInfo.allowed_stream_ids && streamId && !tokenInfo.allowed_stream_ids.includes(streamId)) {
-              throw new Error('Stream not in allowed list for this token');
+              const errorData = {
+                error: 'Stream not in allowed list for this token',
+                stream_id: streamId
+              };
+              await client.query('ROLLBACK');
+              return NextResponse.json(errorData, { status: 403 });
             }
           } else {
-            // Create stream only if allowed
+            // Create stream only if allowed (403)
             if (tokenInfo.agent_link_id && !tokenInfo.allow_create_streams) {
-              throw new Error('Stream not found and token cannot create streams');
+              const errorData = {
+                error: 'Stream not found and token cannot create streams',
+                stream_name: streamName
+              };
+              await client.query('ROLLBACK');
+              return NextResponse.json(errorData, { status: 403 });
             }
             
             // Check stream count limit (max 50 auto-created streams per workspace)
@@ -235,10 +250,11 @@ export async function POST(request: NextRequest) {
       };
       
       const logRows = await client.query(
-        `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::jsonb) as id`,
+        `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::uuid, $4::jsonb) as id`,
         [
           tokenInfo.workspace_id,
           tokenInfo.token_id,
+          tokenInfo.agent_link_id,
           JSON.stringify(fullPayload)
         ]
       );

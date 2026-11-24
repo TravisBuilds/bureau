@@ -316,9 +316,9 @@ BEGIN
   FROM bureau.digital_clones dc
   JOIN bureau.workspace_members wm ON wm.workspace_id = dc.workspace_id AND wm.user_id = dc.owner_user_id AND wm.removed_at IS NULL
   LEFT JOIN LATERAL (
-    SELECT * FROM bureau.clone_heartbeats
-    WHERE clone_id = dc.id
-    ORDER BY date DESC
+    SELECT * FROM bureau.clone_heartbeats ch
+    WHERE ch.clone_id = dc.id
+    ORDER BY ch.date DESC
     LIMIT 1
   ) h ON TRUE
   LEFT JOIN bureau.clone_profiles cp ON cp.clone_id = dc.id

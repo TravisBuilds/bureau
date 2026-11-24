@@ -13,8 +13,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
 
-    // Get members (email is in workspace_members, don't join auth.users)
-    const members = await query<{
+    const { withUser } = await import('@/lib/db');
+    
+    const { members, invites } = await withUser(user.id, user.email, async () => {
+      // Get members (email is in workspace_members, don't join auth.users)
+      const members = await query<{
       user_id: string;
       email: string;
       role: string;
@@ -38,11 +41,11 @@ export async function GET(request: NextRequest) {
        FROM bureau.workspace_members wm
        WHERE wm.workspace_id = $1 AND wm.removed_at IS NULL
        ORDER BY wm.role, wm.email`,
-      [user.workspaceId]
-    );
+        [user.workspaceId]
+      );
 
-    // Get pending invites
-    const invites = await query<{
+      // Get pending invites
+      const invites = await query<{
       id: string;
       email: string;
       role: string;
@@ -63,8 +66,11 @@ export async function GET(request: NextRequest) {
          AND i.revoked_at IS NULL
          AND i.expires_at > NOW()
        ORDER BY i.invited_at DESC`,
-      [user.workspaceId]
-    );
+        [user.workspaceId]
+      );
+      
+      return { members, invites };
+    });
 
     return NextResponse.json({ members, invites });
   } catch (error) {

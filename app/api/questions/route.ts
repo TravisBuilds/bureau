@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
 
-    const questions = await query<{
+    const { withUser } = await import('@/lib/db');
+    
+    const questions = await withUser(user.id, user.email, async () => {
+      return await query<{
       id: string;
       asker_name: string;
       question_text: string;
@@ -43,8 +46,9 @@ export async function GET(request: NextRequest) {
        WHERE q.workspace_id = $1
        ORDER BY q.asked_at DESC
        LIMIT 100`,
-      [user.workspaceId]
-    );
+        [user.workspaceId]
+      );
+    });
 
     return NextResponse.json({ questions });
   } catch (error) {
@@ -71,20 +75,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing target_clone_id or question_text' }, { status: 400 });
     }
 
-    // Verify target_clone_id is in this workspace
-    const cloneCheck = await query<{ exists: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM bureau.digital_clones WHERE id = $1 AND workspace_id = $2) as exists`,
-      [target_clone_id, user.workspaceId]
-    );
+    const { withUser } = await import('@/lib/db');
     
-    if (!cloneCheck[0]?.exists) {
-      return NextResponse.json({ error: 'Clone not found in your workspace' }, { status: 404 });
-    }
-    
-    const result = await query<{ ask_question: string }>(
-      `SELECT bureau.ask_question($1, $2, $3, NULL, NULL, $4, NULL, 'web') as ask_question`,
-      [user.workspaceId, question_text, user.id, target_clone_id]
-    );
+    const result = await withUser(user.id, user.email, async () => {
+      // Verify target_clone_id is in this workspace
+      const cloneCheck = await query<{ exists: boolean }>(
+        `SELECT EXISTS(SELECT 1 FROM bureau.digital_clones WHERE id = $1 AND workspace_id = $2) as exists`,
+        [target_clone_id, user.workspaceId]
+      );
+      
+      if (!cloneCheck[0]?.exists) {
+        throw new Error('Clone not found in your workspace');
+      }
+      
+      return await query<{ ask_question: string }>(
+        `SELECT bureau.ask_question($1, $2, $3, NULL, NULL, $4, NULL, 'web') as ask_question`,
+        [user.workspaceId, question_text, user.id, target_clone_id]
+      );
+    });
 
     return NextResponse.json({ 
       success: true,
@@ -93,6 +101,9 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     if (error instanceof Response) {
       return error;
+    }
+    if (error.message === 'Clone not found in your workspace') {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
     console.error('Error asking question:', error);
     return NextResponse.json({ 

@@ -4,13 +4,7 @@
 
 SET search_path TO bureau, extensions;
 
--- Add admin role to member_role enum if it doesn't exist
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'admin' AND enumtypid = 'bureau.member_role'::regtype) THEN
-    ALTER TYPE bureau.member_role ADD VALUE 'admin';
-  END IF;
-END $$;
+-- Note: 'admin' role added in migration 20261124000000_add_admin_role.sql
 
 -- Add invite fields to workspace_members
 ALTER TABLE bureau.workspace_members

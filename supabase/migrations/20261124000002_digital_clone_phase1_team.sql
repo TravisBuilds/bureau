@@ -146,22 +146,23 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = bureau, pg_temp
 AS $$
+#variable_conflict use_column
 BEGIN
   -- Mark invites as accepted and add to workspace_members (or reactivate if removed)
-  INSERT INTO bureau.workspace_members (workspace_id, user_id, role, invited_at, joined_at, invited_by)
-  SELECT i.workspace_id, p_user_id, i.role, i.invited_at, NOW(), i.invited_by
+  INSERT INTO bureau.workspace_members (workspace_id, user_id, email, role, invited_at, joined_at, invited_by)
+  SELECT i.workspace_id, p_user_id, lower(p_email), i.role, i.invited_at, NOW(), i.invited_by
   FROM bureau.workspace_invites i
-  WHERE i.email = p_email 
+  WHERE lower(i.email) = lower(p_email) 
     AND i.accepted_at IS NULL 
     AND i.revoked_at IS NULL
     AND i.expires_at > NOW()
   ON CONFLICT (workspace_id, user_id) DO UPDATE
-  SET removed_at = NULL, removed_by = NULL, role = EXCLUDED.role, joined_at = NOW();
+  SET removed_at = NULL, removed_by = NULL, role = EXCLUDED.role, email = EXCLUDED.email, joined_at = NOW();
   
   -- Mark invites as accepted
   UPDATE bureau.workspace_invites
   SET accepted_at = NOW(), accepted_by = p_user_id
-  WHERE email = p_email 
+  WHERE lower(email) = lower(p_email) 
     AND accepted_at IS NULL 
     AND revoked_at IS NULL
     AND expires_at > NOW();

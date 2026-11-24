@@ -1,0 +1,250 @@
+diff --git a/app/api/mcp/route.ts b/app/api/mcp/route.ts
+index 9e6e546..7d0f717 100644
+--- a/app/api/mcp/route.ts
++++ b/app/api/mcp/route.ts
+@@ -295,16 +295,13 @@ export async function POST(request: NextRequest) {
+       if (toolName === 'bureau_whoami') {
+         // Return agent link info
+         if (cred.agent_link_id) {
+-          const linkRows = await query<{
+-            agent_label: string;
+-            stream_ids: string[];
+-            allow_create_streams: boolean;
+-            scopes: string[];
+-          }>(
+-            `SELECT agent_label, stream_ids, allow_create_streams, scopes
+-             FROM bureau.agent_links
+-             WHERE id = $1`,
+-            [cred.agent_link_id]
++          const linkRows = await withUser(cred.user_id, cred.user_email, async (client) =>
++            (await client.query(
++              `SELECT agent_label, stream_ids, allow_create_streams, scopes
++               FROM bureau.agent_links
++               WHERE id = $1`,
++              [cred.agent_link_id]
++            )).rows as Array<{ agent_label: string; stream_ids: string[]; allow_create_streams: boolean; scopes: string[] }>
+           );
+           
+           return NextResponse.json({
+@@ -348,26 +345,30 @@ export async function POST(request: NextRequest) {
+       
+       if (toolName === 'bureau_list_streams') {
+         // List accessible streams
+-        let streamRows: Array<{ id: string; name: string; category: string }>;
++        type StreamRow = { id: string; name: string; category: string };
++        let streamRows: StreamRow[];
+         
+-        if (cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) {
+-          streamRows = await query<{ id: string; name: string; category: string }>(
+-            `SELECT id, name, category FROM bureau.streams
+-             WHERE workspace_id = $1 AND id = ANY($2)
+-             ORDER BY name`,
+-            [cred.workspace_id, cred.allowed_stream_ids]
+-          );
+-        } else if (cred.agent_link_id && !cred.allow_create_streams) {
+-          // No streams allowed
++        if (cred.agent_link_id && !(cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) && !cred.allow_create_streams) {
++          // OAuth link with no streams and no create permission
+           streamRows = [];
+         } else {
+-          // Legacy token or allow_create_streams: list all
+-          streamRows = await query<{ id: string; name: string; category: string }>(
+-            `SELECT id, name, category FROM bureau.streams
+-             WHERE workspace_id = $1
+-             ORDER BY name`,
+-            [cred.workspace_id]
+-          );
++          streamRows = await withUser(cred.user_id, cred.user_email, async (client) => {
++            if (cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) {
++              return (await client.query(
++                `SELECT id, name, category FROM bureau.streams
++                 WHERE workspace_id = $1 AND id = ANY($2)
++                 ORDER BY name`,
++                [cred.workspace_id, cred.allowed_stream_ids]
++              )).rows as StreamRow[];
++            }
++            // Legacy token or allow_create_streams: list all
++            return (await client.query(
++              `SELECT id, name, category FROM bureau.streams
++               WHERE workspace_id = $1
++               ORDER BY name`,
++              [cred.workspace_id]
++            )).rows as StreamRow[];
++          });
+         }
+         
+         return NextResponse.json({
+@@ -478,8 +479,8 @@ export async function POST(request: NextRequest) {
+           };
+           
+           const logRows = await client.query(
+-            `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::jsonb) as id`,
+-            [cred.workspace_id, cred.token_id || cred.agent_link_id, JSON.stringify(payload)]
++            `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::uuid, $4::jsonb) as id`,
++            [cred.workspace_id, cred.token_id, cred.agent_link_id, JSON.stringify(payload)]
+           );
+           
+           return { ingest_id: logRows.rows[0].id, stream_id: streamId };
+diff --git a/lib/oauth-server.ts b/lib/oauth-server.ts
+index 5de588d..7f9ff87 100644
+--- a/lib/oauth-server.ts
++++ b/lib/oauth-server.ts
+@@ -157,41 +157,39 @@ export async function exchangeCode(
+     throw new Error('INVALID_PKCE');
+   }
+   
+-  // Create or get grant
+-  const grantRows = await query<{ id: string }>(
+-    `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes, resource)
+-     VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
+-     ON CONFLICT (workspace_id, user_id, client_id) 
+-     DO UPDATE SET last_seen_at = NOW(), status = 'active'
+-     RETURNING id`,
+-    [codeData.workspace_id, codeData.user_id, clientId, codeData.scopes, resource]
+-  );
+-  
+-  const grantId = grantRows[0].id;
+-  
+-  // Create agent link
+-  const agentLinkRows = await query<{ id: string }>(
+-    `INSERT INTO bureau.agent_links (
+-      workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
+-    ) VALUES ($1, $2, $3, $4, $5, $6)
+-    ON CONFLICT (grant_id, agent_label)
+-    DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active', last_used_at = NOW()
+-    RETURNING id`,
+-    [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
+-  );
+-  
+-  const agentLinkId = agentLinkRows[0].id;
+-  
+-  // Create hidden ingest_token for FK
+-  const { token: hiddenToken, hash: hiddenHash, tokenPrefix: hiddenPrefix } = generateToken('bureau_hidden_');
+-  await query(
+-    `INSERT INTO bureau.ingest_tokens (
+-      workspace_id, name, token_hash, token_prefix, kind, agent_link_id
+-    ) VALUES ($1, $2, $3, $4, 'agent_link', $5)
+-    ON CONFLICT DO NOTHING`,
+-    [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
+-  );
+-  
++  // Grant, agent link and hidden ingest token are written as the approving user,
++  // so the oauth_grants / agent_links RLS policies (auth.uid() + user_workspaces()) pass.
++  const { grantId } = await withUser(codeData.user_id, '', async (client) => {
++    const grantRows = await client.query(
++      `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes, resource)
++       VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
++       ON CONFLICT (workspace_id, user_id, client_id)
++       DO UPDATE SET last_seen_at = NOW(), status = 'active'
++       RETURNING id`,
++      [codeData.workspace_id, codeData.user_id, clientId, codeData.scopes, resource]
++    );
++    const grantId: string = grantRows.rows[0].id;
++    const agentLinkRows = await client.query(
++      `INSERT INTO bureau.agent_links (
++        workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
++      ) VALUES ($1, $2, $3, $4, $5, $6)
++      ON CONFLICT (grant_id, agent_label)
++      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active', last_used_at = NOW()
++      RETURNING id`,
++      [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
++    );
++    const agentLinkId: string = agentLinkRows.rows[0].id;
++    const { hash: hiddenHash, tokenPrefix: hiddenPrefix } = generateToken('bureau_hidden_');
++    await client.query(
++      `INSERT INTO bureau.ingest_tokens (
++        workspace_id, name, token_hash, token_prefix, kind, agent_link_id
++      ) VALUES ($1, $2, $3, $4, 'agent_link', $5)
++      ON CONFLICT DO NOTHING`,
++      [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
++    );
++    return { grantId };
++  });
++
+   // Mint tokens
+   const { token: accessToken, hash: accessHash, tokenPrefix: accessPrefix } = generateToken('bureau_at_');
+   const { token: refreshToken, hash: refreshHash, tokenPrefix: refreshPrefix } = generateToken('bureau_rt_');
+@@ -388,28 +386,28 @@ export async function pollDeviceCode(
+     [deviceCodeHash]
+   );
+   
+-  // Create grant for device flow (use 'script' client)
+-  const grantRows = await query<{ id: string }>(
+-    `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
+-     VALUES ($1, $2, 'script-device', 'script', $3)
+-     ON CONFLICT (workspace_id, user_id, client_id)
+-     DO UPDATE SET last_seen_at = NOW(), status = 'active'
+-     RETURNING id`,
+-    [device.workspace_id, device.user_id, device.scopes]
+-  );
+-  
+-  const grantId = grantRows[0].id;
+-  
+-  // Create agent link
+-  await query(
+-    `INSERT INTO bureau.agent_links (
+-      workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
+-    ) VALUES ($1, $2, $3, $4, $5, $6)
+-    ON CONFLICT (grant_id, agent_label)
+-    DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'`,
+-    [device.workspace_id, grantId, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
+-  );
+-  
++  // Create grant + agent link as the approving user so RLS (auth.uid() + user_workspaces()) passes
++  const grantId = await withUser(device.user_id, '', async (client) => {
++    const grantRows = await client.query(
++      `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
++       VALUES ($1, $2, 'script-device', 'script', $3)
++       ON CONFLICT (workspace_id, user_id, client_id)
++       DO UPDATE SET last_seen_at = NOW(), status = 'active'
++       RETURNING id`,
++      [device.workspace_id, device.user_id, device.scopes]
++    );
++    const id: string = grantRows.rows[0].id;
++    await client.query(
++      `INSERT INTO bureau.agent_links (
++        workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
++      ) VALUES ($1, $2, $3, $4, $5, $6)
++      ON CONFLICT (grant_id, agent_label)
++      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'`,
++      [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
++    );
++    return id;
++  });
++
+   // Mint tokens
+   const { token: accessToken, hash: accessHash, tokenPrefix: accessPrefix } = generateToken('bureau_at_');
+   const { token: refreshToken, hash: refreshHash, tokenPrefix: refreshPrefix } = generateToken('bureau_rt_');
+diff --git a/supabase/migrations/20261124000002_digital_clone_phase1_team.sql b/supabase/migrations/20261124000002_digital_clone_phase1_team.sql
+index 937b41e..f579753 100644
+--- a/supabase/migrations/20261124000002_digital_clone_phase1_team.sql
++++ b/supabase/migrations/20261124000002_digital_clone_phase1_team.sql
+@@ -146,22 +146,23 @@ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path = bureau, pg_temp
+ AS $$
++#variable_conflict use_column
+ BEGIN
+   -- Mark invites as accepted and add to workspace_members (or reactivate if removed)
+-  INSERT INTO bureau.workspace_members (workspace_id, user_id, role, invited_at, joined_at, invited_by)
+-  SELECT i.workspace_id, p_user_id, i.role, i.invited_at, NOW(), i.invited_by
++  INSERT INTO bureau.workspace_members (workspace_id, user_id, email, role, invited_at, joined_at, invited_by)
++  SELECT i.workspace_id, p_user_id, lower(p_email), i.role, i.invited_at, NOW(), i.invited_by
+   FROM bureau.workspace_invites i
+-  WHERE i.email = p_email 
++  WHERE lower(i.email) = lower(p_email) 
+     AND i.accepted_at IS NULL 
+     AND i.revoked_at IS NULL
+     AND i.expires_at > NOW()
+   ON CONFLICT (workspace_id, user_id) DO UPDATE
+-  SET removed_at = NULL, removed_by = NULL, role = EXCLUDED.role, joined_at = NOW();
++  SET removed_at = NULL, removed_by = NULL, role = EXCLUDED.role, email = EXCLUDED.email, joined_at = NOW();
+   
+   -- Mark invites as accepted
+   UPDATE bureau.workspace_invites
+   SET accepted_at = NOW(), accepted_by = p_user_id
+-  WHERE email = p_email 
++  WHERE lower(email) = lower(p_email) 
+     AND accepted_at IS NULL 
+     AND revoked_at IS NULL
+     AND expires_at > NOW();

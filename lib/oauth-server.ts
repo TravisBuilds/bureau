@@ -157,41 +157,39 @@ export async function exchangeCode(
     throw new Error('INVALID_PKCE');
   }
   
-  // Create or get grant
-  const grantRows = await query<{ id: string }>(
-    `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes, resource)
-     VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
-     ON CONFLICT (workspace_id, user_id, client_id) 
-     DO UPDATE SET last_seen_at = NOW(), status = 'active'
-     RETURNING id`,
-    [codeData.workspace_id, codeData.user_id, clientId, codeData.scopes, resource]
-  );
-  
-  const grantId = grantRows[0].id;
-  
-  // Create agent link
-  const agentLinkRows = await query<{ id: string }>(
-    `INSERT INTO bureau.agent_links (
-      workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
-    ) VALUES ($1, $2, $3, $4, $5, $6)
-    ON CONFLICT (grant_id, agent_label)
-    DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active', last_used_at = NOW()
-    RETURNING id`,
-    [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
-  );
-  
-  const agentLinkId = agentLinkRows[0].id;
-  
-  // Create hidden ingest_token for FK
-  const { token: hiddenToken, hash: hiddenHash, tokenPrefix: hiddenPrefix } = generateToken('bureau_hidden_');
-  await query(
-    `INSERT INTO bureau.ingest_tokens (
-      workspace_id, name, token_hash, token_prefix, kind, agent_link_id
-    ) VALUES ($1, $2, $3, $4, 'agent_link', $5)
-    ON CONFLICT DO NOTHING`,
-    [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
-  );
-  
+  // Grant, agent link and hidden ingest token are written as the approving user,
+  // so the oauth_grants / agent_links RLS policies (auth.uid() + user_workspaces()) pass.
+  const { grantId } = await withUser(codeData.user_id, '', async (client) => {
+    const grantRows = await client.query(
+      `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes, resource)
+       VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
+       ON CONFLICT (workspace_id, user_id, client_id)
+       DO UPDATE SET last_seen_at = NOW(), status = 'active'
+       RETURNING id`,
+      [codeData.workspace_id, codeData.user_id, clientId, codeData.scopes, resource]
+    );
+    const grantId: string = grantRows.rows[0].id;
+    const agentLinkRows = await client.query(
+      `INSERT INTO bureau.agent_links (
+        workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (grant_id, agent_label)
+      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active', last_used_at = NOW()
+      RETURNING id`,
+      [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
+    );
+    const agentLinkId: string = agentLinkRows.rows[0].id;
+    const { hash: hiddenHash, tokenPrefix: hiddenPrefix } = generateToken('bureau_hidden_');
+    await client.query(
+      `INSERT INTO bureau.ingest_tokens (
+        workspace_id, name, token_hash, token_prefix, kind, agent_link_id
+      ) VALUES ($1, $2, $3, $4, 'agent_link', $5)
+      ON CONFLICT DO NOTHING`,
+      [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
+    );
+    return { grantId };
+  });
+
   // Mint tokens
   const { token: accessToken, hash: accessHash, tokenPrefix: accessPrefix } = generateToken('bureau_at_');
   const { token: refreshToken, hash: refreshHash, tokenPrefix: refreshPrefix } = generateToken('bureau_rt_');
@@ -388,28 +386,28 @@ export async function pollDeviceCode(
     [deviceCodeHash]
   );
   
-  // Create grant for device flow (use 'script' client)
-  const grantRows = await query<{ id: string }>(
-    `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
-     VALUES ($1, $2, 'script-device', 'script', $3)
-     ON CONFLICT (workspace_id, user_id, client_id)
-     DO UPDATE SET last_seen_at = NOW(), status = 'active'
-     RETURNING id`,
-    [device.workspace_id, device.user_id, device.scopes]
-  );
-  
-  const grantId = grantRows[0].id;
-  
-  // Create agent link
-  await query(
-    `INSERT INTO bureau.agent_links (
-      workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
-    ) VALUES ($1, $2, $3, $4, $5, $6)
-    ON CONFLICT (grant_id, agent_label)
-    DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'`,
-    [device.workspace_id, grantId, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
-  );
-  
+  // Create grant + agent link as the approving user so RLS (auth.uid() + user_workspaces()) passes
+  const grantId = await withUser(device.user_id, '', async (client) => {
+    const grantRows = await client.query(
+      `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
+       VALUES ($1, $2, 'script-device', 'script', $3)
+       ON CONFLICT (workspace_id, user_id, client_id)
+       DO UPDATE SET last_seen_at = NOW(), status = 'active'
+       RETURNING id`,
+      [device.workspace_id, device.user_id, device.scopes]
+    );
+    const id: string = grantRows.rows[0].id;
+    await client.query(
+      `INSERT INTO bureau.agent_links (
+        workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (grant_id, agent_label)
+      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'`,
+      [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
+    );
+    return id;
+  });
+
   // Mint tokens
   const { token: accessToken, hash: accessHash, tokenPrefix: accessPrefix } = generateToken('bureau_at_');
   const { token: refreshToken, hash: refreshHash, tokenPrefix: refreshPrefix } = generateToken('bureau_rt_');

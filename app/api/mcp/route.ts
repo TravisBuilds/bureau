@@ -295,16 +295,13 @@ export async function POST(request: NextRequest) {
       if (toolName === 'bureau_whoami') {
         // Return agent link info
         if (cred.agent_link_id) {
-          const linkRows = await query<{
-            agent_label: string;
-            stream_ids: string[];
-            allow_create_streams: boolean;
-            scopes: string[];
-          }>(
-            `SELECT agent_label, stream_ids, allow_create_streams, scopes
-             FROM bureau.agent_links
-             WHERE id = $1`,
-            [cred.agent_link_id]
+          const linkRows = await withUser(cred.user_id, cred.user_email, async (client) =>
+            (await client.query(
+              `SELECT agent_label, stream_ids, allow_create_streams, scopes
+               FROM bureau.agent_links
+               WHERE id = $1`,
+              [cred.agent_link_id]
+            )).rows as Array<{ agent_label: string; stream_ids: string[]; allow_create_streams: boolean; scopes: string[] }>
           );
           
           return NextResponse.json({
@@ -348,26 +345,30 @@ export async function POST(request: NextRequest) {
       
       if (toolName === 'bureau_list_streams') {
         // List accessible streams
-        let streamRows: Array<{ id: string; name: string; category: string }>;
+        type StreamRow = { id: string; name: string; category: string };
+        let streamRows: StreamRow[];
         
-        if (cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) {
-          streamRows = await query<{ id: string; name: string; category: string }>(
-            `SELECT id, name, category FROM bureau.streams
-             WHERE workspace_id = $1 AND id = ANY($2)
-             ORDER BY name`,
-            [cred.workspace_id, cred.allowed_stream_ids]
-          );
-        } else if (cred.agent_link_id && !cred.allow_create_streams) {
-          // No streams allowed
+        if (cred.agent_link_id && !(cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) && !cred.allow_create_streams) {
+          // OAuth link with no streams and no create permission
           streamRows = [];
         } else {
-          // Legacy token or allow_create_streams: list all
-          streamRows = await query<{ id: string; name: string; category: string }>(
-            `SELECT id, name, category FROM bureau.streams
-             WHERE workspace_id = $1
-             ORDER BY name`,
-            [cred.workspace_id]
-          );
+          streamRows = await withUser(cred.user_id, cred.user_email, async (client) => {
+            if (cred.allowed_stream_ids && cred.allowed_stream_ids.length > 0) {
+              return (await client.query(
+                `SELECT id, name, category FROM bureau.streams
+                 WHERE workspace_id = $1 AND id = ANY($2)
+                 ORDER BY name`,
+                [cred.workspace_id, cred.allowed_stream_ids]
+              )).rows as StreamRow[];
+            }
+            // Legacy token or allow_create_streams: list all
+            return (await client.query(
+              `SELECT id, name, category FROM bureau.streams
+               WHERE workspace_id = $1
+               ORDER BY name`,
+              [cred.workspace_id]
+            )).rows as StreamRow[];
+          });
         }
         
         return NextResponse.json({
@@ -478,8 +479,8 @@ export async function POST(request: NextRequest) {
           };
           
           const logRows = await client.query(
-            `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::jsonb) as id`,
-            [cred.workspace_id, cred.token_id || cred.agent_link_id, JSON.stringify(payload)]
+            `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::uuid, $4::jsonb) as id`,
+            [cred.workspace_id, cred.token_id, cred.agent_link_id, JSON.stringify(payload)]
           );
           
           return { ingest_id: logRows.rows[0].id, stream_id: streamId };

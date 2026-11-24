@@ -489,6 +489,7 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          // Pass workspace_id and user_id from token, not from input
           const result = await query<{ register_clone: string }>(
             `SELECT bureau.register_clone($1, $2, $3, $4, $5, $6, 'v1', $7, $8, $9) as register_clone`,
             [cred.workspace_id, cred.user_id, cred.agent_link_id, display_name, handle, vendor, timezone, working_hours, slack_handle]
@@ -548,9 +549,10 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          // Pass workspace_id and user_id from token first
           await query(
-            `SELECT bureau.update_clone_profile($1, $2, $3, $4, $5, $6)`,
-            [clone_id, responsibilities, active_work, decisions_pending, recent_output, availability]
+            `SELECT bureau.update_clone_profile($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [cred.workspace_id, cred.user_id, clone_id, responsibilities, active_work, decisions_pending, recent_output, availability]
           );
           
           return NextResponse.json({
@@ -607,10 +609,11 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          // Pass workspace_id and user_id from token first
           await query(
-            `SELECT bureau.post_clone_heartbeat($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            `SELECT bureau.post_clone_heartbeat($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [
-              clone_id, date, top_priority, 
+              cred.workspace_id, cred.user_id, clone_id, date, top_priority, 
               active || [], 
               blocked || [], 
               decisions_waiting_on_me || [],
@@ -716,9 +719,10 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          // Pass workspace_id and user_id from token first
           const result = await query(
-            `SELECT * FROM bureau.get_clone_questions($1, $2)`,
-            [clone_id, status || null]
+            `SELECT * FROM bureau.get_clone_questions($1, $2, $3, $4)`,
+            [cred.workspace_id, cred.user_id, clone_id, status || null]
           );
           
           return NextResponse.json({
@@ -772,9 +776,10 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          // Pass workspace_id and user_id from token first
           await query(
-            `SELECT bureau.answer_question($1, $2, TRUE)`,
-            [question_id, answer_text]
+            `SELECT bureau.answer_question($1, $2, $3, $4, TRUE)`,
+            [cred.workspace_id, cred.user_id, question_id, answer_text]
           );
           
           return NextResponse.json({
@@ -828,9 +833,10 @@ export async function POST(request: NextRequest) {
         }
         
         try {
+          // Pass workspace_id and user_id from token first
           await query(
-            `SELECT bureau.escalate_question($1, $2)`,
-            [question_id, escalation_reason]
+            `SELECT bureau.escalate_question($1, $2, $3, $4)`,
+            [cred.workspace_id, cred.user_id, question_id, escalation_reason]
           );
           
           return NextResponse.json({

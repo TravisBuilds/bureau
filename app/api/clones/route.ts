@@ -31,11 +31,11 @@ export async function GET(request: NextRequest) {
         dc.vendor,
         dc.timezone,
         dc.slack_handle,
-        au.email as owner_email,
+        wm.email as owner_email,
         dc.last_seen_at,
-        dc.is_stale
+        (dc.last_seen_at IS NULL OR dc.last_seen_at < NOW() - INTERVAL '26 hours') as is_stale
        FROM bureau.digital_clones dc
-       JOIN auth.users au ON au.id = dc.owner_user_id
+       JOIN bureau.workspace_members wm ON wm.workspace_id = dc.workspace_id AND wm.user_id = dc.owner_user_id AND wm.removed_at IS NULL
        WHERE dc.workspace_id = $1
        ORDER BY dc.display_name`,
       [user.workspaceId]

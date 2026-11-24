@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
 
-    // Get members
+    // Get members (email is in workspace_members, don't join auth.users)
     const members = await query<{
       user_id: string;
       email: string;
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }>(
       `SELECT 
         wm.user_id,
-        au.email,
+        wm.email,
         wm.role,
         wm.joined_at,
         wm.invited_at,
@@ -36,9 +36,8 @@ export async function GET(request: NextRequest) {
           WHERE og.workspace_id = wm.workspace_id AND og.user_id = wm.user_id
         ) as last_seen_at
        FROM bureau.workspace_members wm
-       JOIN auth.users au ON au.id = wm.user_id
        WHERE wm.workspace_id = $1 AND wm.removed_at IS NULL
-       ORDER BY wm.role, au.email`,
+       ORDER BY wm.role, wm.email`,
       [user.workspaceId]
     );
 

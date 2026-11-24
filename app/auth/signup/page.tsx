@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 function SignUpForm() {
   const router = useRouter();
@@ -161,12 +161,13 @@ function SignUpForm() {
           </button>
         </form>
         
-        <div className="mt-6 text-center text-sm text-slate-500">
-          <p>
-            Pilot access only. Free: 2 streams, manual cost ledger.
-            <br />
-            Plus ($9/mo): unlimited streams, API connectors.
-          </p>
+          <div className="mt-6 text-center text-sm text-slate-500">
+            <p>
+              Pilot access only. Free: 2 streams, manual cost ledger.
+              <br />
+              Plus ($9/mo): unlimited streams, API connectors.
+            </p>
+          </div>
         </div>
       </div>
     </div>

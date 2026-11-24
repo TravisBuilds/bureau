@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
+
+// Scope allowlist
+const ALLOWED_SCOPES = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
 import { storeAuthCode, validateRedirectUri } from '@/lib/oauth-server';
 
 /**

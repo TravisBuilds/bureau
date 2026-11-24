@@ -1,225 +1,204 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import crypto from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
+import { query, withUser } from '@/lib/db';
 
 /**
- * POST /api/slack/events - Slack Events API handler
- * 
- * Features:
- * - Signature verification (HMAC SHA256)
- * - URL verification challenge
- * - app_mention event handling
- * - Route questions to clones based on handle mentions
- * 
- * Environment variables:
- * - SLACK_SIGNING_SECRET: Required for signature verification
- * - SLACK_BOT_TOKEN: Required for posting responses
+ * Slack Events API webhook handler
+ * Full implementation with security, deduplication, and deterministic answers
  */
 
-interface SlackEvent {
-  type: string;
-  event?: {
-    type: string;
-    text: string;
-    user: string;
-    channel: string;
-    ts: string;
-  };
-  challenge?: string;
-}
+const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || '';
+const FIVE_MINUTES = 5 * 60; // seconds
 
 function verifySlackSignature(
-  signingSecret: string,
-  timestamp: string,
   body: string,
+  timestamp: string,
   signature: string
 ): boolean {
-  // Verify timestamp is within 5 minutes
-  const now = Math.floor(Date.now() / 1000);
-  const requestTime = parseInt(timestamp);
-  if (Math.abs(now - requestTime) > 300) {
+  if (!SLACK_SIGNING_SECRET) {
+    console.error('SLACK_SIGNING_SECRET not configured');
     return false;
   }
 
-  // Compute expected signature
-  const baseString = `v0:${timestamp}:${body}`;
-  const hmac = crypto.createHmac('sha256', signingSecret);
-  hmac.update(baseString);
-  const expected = `v0=${hmac.digest('hex')}`;
+  // Reject missing or non-numeric timestamp
+  if (!timestamp || isNaN(parseInt(timestamp, 10))) {
+    console.error('Missing or invalid timestamp');
+    return false;
+  }
 
-  // Constant-time comparison
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
-}
+  // Reject old timestamps (>5 minutes)
+  const timestampNum = parseInt(timestamp, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestampNum) > FIVE_MINUTES) {
+    console.error('Timestamp too old or in future');
+    return false;
+  }
 
-export async function POST(request: NextRequest) {
-  // Check if Slack integration is enabled
-  const signingSecret = process.env.SLACK_SIGNING_SECRET;
-  const botToken = process.env.SLACK_BOT_TOKEN;
+  const hmac = createHmac('sha256', SLACK_SIGNING_SECRET);
+  const sigBasestring = `v0:${timestamp}:${body}`;
+  hmac.update(sigBasestring);
+  const mySignature = `v0=${hmac.digest('hex')}`;
 
-  if (!signingSecret || !botToken) {
-    return NextResponse.json(
-      { error: 'Slack integration not configured. Set SLACK_SIGNING_SECRET and SLACK_BOT_TOKEN.' },
-      { status: 503 }
-    );
+  // Length mismatch check before timingSafeEqual (avoids RangeError)
+  if (mySignature.length !== signature.length) {
+    console.error('Signature length mismatch');
+    return false;
   }
 
   try {
-    // Get raw body for signature verification
+    return timingSafeEqual(
+      Buffer.from(mySignature, 'utf8'),
+      Buffer.from(signature, 'utf8')
+    );
+  } catch (e) {
+    console.error('timingSafeEqual failed:', e);
+    return false;
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // 1. Check for retry header - ignore with 200
+    const retryNum = request.headers.get('x-slack-retry-num');
+    if (retryNum && parseInt(retryNum, 10) > 0) {
+      console.log(`Ignoring Slack retry #${retryNum}`);
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+
+    // 2. Verify signature
     const body = await request.text();
     const timestamp = request.headers.get('x-slack-request-timestamp') || '';
     const signature = request.headers.get('x-slack-signature') || '';
 
-    // Verify signature
-    if (!verifySlackSignature(signingSecret, timestamp, body, signature)) {
-      console.error('Slack signature verification failed');
+    if (!verifySlackSignature(body, timestamp, signature)) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
-    // Parse event
-    const event: SlackEvent = JSON.parse(body);
+    // 3. Parse payload
+    const payload = JSON.parse(body);
 
-    // Handle URL verification challenge
-    if (event.type === 'url_verification' && event.challenge) {
-      return NextResponse.json({ challenge: event.challenge });
+    // 4. Handle URL verification
+    if (payload.type === 'url_verification') {
+      return NextResponse.json({ challenge: payload.challenge });
     }
 
-    // Handle app_mention events
-    if (event.type === 'event_callback' && event.event?.type === 'app_mention') {
-      const { text, user, channel, ts } = event.event;
-
-      // Extract mentioned clone handle from message
-      // Expected format: "@Bureau ask @JacksBot what's blocking you?"
-      const handleMatch = text.match(/@(\w+)/g);
-      if (!handleMatch || handleMatch.length < 2) {
-        await postSlackMessage(botToken, channel, ts, 
-          'Please mention a clone handle, e.g.: @Bureau ask @JacksBot what\'s blocking you?'
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      const cloneHandle = handleMatch[1].substring(1); // Remove @
-      const questionText = text.replace(/@\w+/g, '').replace(/ask/i, '').trim();
-
-      if (!questionText) {
-        await postSlackMessage(botToken, channel, ts,
-          'Please provide a question after the clone handle.'
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      // Find clone by handle or slack_handle
-      const clones = await query<{
-        id: string;
-        workspace_id: string;
-        display_name: string;
-        handle: string;
-      }>(
-        `SELECT id, workspace_id, display_name, handle
-         FROM bureau.digital_clones
-         WHERE handle ILIKE $1 OR slack_handle ILIKE $1
-         LIMIT 1`,
-        [cloneHandle]
-      );
-
-      if (clones.length === 0) {
-        await postSlackMessage(botToken, channel, ts,
-          `Clone @${cloneHandle} not found. Check the handle and try again.`
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      const clone = clones[0];
-
-      // Get latest heartbeat for deterministic answer
-      const heartbeats = await query<{
-        top_priority: string;
-        blocked: string[];
-        active: string[];
-      }>(
-        `SELECT top_priority, blocked, active
-         FROM bureau.clone_heartbeats
-         WHERE clone_id = $1
-         ORDER BY date DESC
-         LIMIT 1`,
-        [clone.id]
-      );
-
-      let answer = '';
-      if (heartbeats.length > 0) {
-        const h = heartbeats[0];
-        
-        // Deterministic answer from heartbeat data
-        if (questionText.toLowerCase().includes('blocking') || questionText.toLowerCase().includes('blocked')) {
-          if (h.blocked && h.blocked.length > 0) {
-            answer = `Currently blocked on: ${h.blocked.join(', ')}`;
-          } else {
-            answer = 'No blockers right now!';
-          }
-        } else if (questionText.toLowerCase().includes('working on') || questionText.toLowerCase().includes('priority')) {
-          answer = `Top priority: ${h.top_priority}`;
-          if (h.active && h.active.length > 0) {
-            answer += `\nAlso active on: ${h.active.join(', ')}`;
-          }
-        } else {
-          // General status
-          answer = `Top priority: ${h.top_priority}`;
-          if (h.blocked && h.blocked.length > 0) {
-            answer += `\nBlocked on: ${h.blocked.join(', ')}`;
-          }
-        }
-      } else {
-        // No heartbeat data - create question for routing
-        const result = await query<{ ask_question: string }>(
-          `SELECT bureau.ask_question($1, NULL, NULL, $2, $3, NULL, 'slack', $4) as ask_question`,
-          [clone.workspace_id, user, clone.id, questionText]
-        );
-
-        answer = `I've routed your question to ${clone.display_name}. They'll respond when they can.`;
-      }
-
-      // Post response
-      await postSlackMessage(botToken, channel, ts, answer);
-
+    // 5. Handle events
+    if (payload.type !== 'event_callback') {
       return NextResponse.json({ ok: true });
     }
 
-    // Unhandled event type
-    return NextResponse.json({ ok: true });
+    const event = payload.event;
+    const eventId = payload.event_id;
+    const teamId = payload.team_id;
 
-  } catch (error) {
-    console.error('Slack event handler error:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-  }
-}
-
-async function postSlackMessage(
-  token: string,
-  channel: string,
-  threadTs: string,
-  text: string
-): Promise<void> {
-  try {
-    const response = await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        channel,
-        thread_ts: threadTs,
-        text
-      })
-    });
-
-    const data = await response.json();
-    if (!data.ok) {
-      console.error('Slack API error:', data.error);
+    // 6. Dedupe: INSERT ... ON CONFLICT DO NOTHING before any side effects
+    if (eventId) {
+      try {
+        await query(
+          'INSERT INTO bureau.slack_event_ids (event_id) VALUES ($1)',
+          [eventId]
+        );
+      } catch (e: any) {
+        // Duplicate key = already processed
+        if (e.code === '23505') {
+          console.log(`Duplicate event ${eventId}, ignoring`);
+          return NextResponse.json({ ok: true }, { status: 200 });
+        }
+        throw e;
+      }
     }
-  } catch (error) {
-    console.error('Failed to post Slack message:', error);
+
+    // 7. Resolve workspace from team_id
+    if (!teamId) {
+      console.error('No team_id in payload');
+      return NextResponse.json({ ok: true });
+    }
+
+    const workspaceRows = await query<{ workspace_id: string }>(
+      'SELECT workspace_id FROM bureau.slack_installations WHERE team_id = $1',
+      [teamId]
+    );
+
+    if (workspaceRows.length === 0) {
+      console.log(`No workspace found for team ${teamId}`);
+      return NextResponse.json({ ok: true });
+    }
+
+    const workspaceId = workspaceRows[0].workspace_id;
+
+    // 8. Handle app_mention events
+    if (event.type === 'app_mention') {
+      const text = event.text || '';
+      const userId = event.user;
+      const channel = event.channel;
+      const ts = event.ts;
+
+      // Remove bot mention tags (<@BOTID>)
+      const cleanText = text.replace(/<@[A-Z0-9]+>/g, '').trim();
+
+      let handle: string | null = null;
+      let questionText: string | null = null;
+
+      // Parse '@Bureau ask <handle> <question>'
+      const bureauAskMatch = cleanText.match(/^ask\s+(@?\w+)\s+(.+)$/i);
+      if (bureauAskMatch) {
+        handle = bureauAskMatch[1].replace('@', '');
+        questionText = bureauAskMatch[2];
+      } else {
+        // Parse '@<handle> <question>' (direct mention)
+        const directMatch = cleanText.match(/^@?(\w+)\s+(.+)$/);
+        if (directMatch) {
+          handle = directMatch[1];
+          questionText = directMatch[2];
+        }
+      }
+
+      if (!handle || !questionText) {
+        console.log('Could not parse question format');
+        return NextResponse.json({ ok: true });
+      }
+
+      // 9. Look up clone by handle in this workspace only
+      const cloneRows = await query<{ id: string; display_name: string; owner_user_id: string }>(
+        `SELECT id, display_name, owner_user_id 
+         FROM bureau.digital_clones 
+         WHERE workspace_id = $1 AND handle = $2
+         LIMIT 1`,
+        [workspaceId, handle]
+      );
+
+      if (cloneRows.length === 0) {
+        console.log(`Clone ${handle} not found in workspace ${workspaceId}`);
+        return NextResponse.json({ ok: true });
+      }
+
+      const clone = cloneRows[0];
+
+      // 10. Record question deterministically (no LLM, no async processing)
+      // Run with the clone owner's user context for RLS
+      await withUser(clone.owner_user_id, '', async () => {
+        await query(
+          `SELECT bureau.ask_question($1, $2, NULL, $3, $4, $5, $6, 'slack') as ask_question`,
+          [
+            workspaceId,
+            questionText,
+            `slack-${userId}`,
+            channel,
+            clone.id,
+            ts
+          ]
+        );
+      });
+
+      console.log(`Recorded Slack question for clone ${handle} in workspace ${workspaceId}`);
+
+      // Deterministic response (no LLM call, no posting back to Slack in webhook)
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error: any) {
+    console.error('Slack events error:', error);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

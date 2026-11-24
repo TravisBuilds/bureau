@@ -7,11 +7,10 @@ SET search_path TO bureau, extensions;
 CREATE TABLE IF NOT EXISTS bureau.slack_installations (
   id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
   workspace_id UUID NOT NULL REFERENCES bureau.workspaces(id) ON DELETE CASCADE,
-  team_id TEXT NOT NULL,
+  team_id TEXT NOT NULL UNIQUE,  -- UNIQUE constraint on team_id
   installed_at TIMESTAMPTZ DEFAULT NOW(),
   installed_by UUID REFERENCES auth.users(id),
-  metadata JSONB DEFAULT '{}'::jsonb,
-  UNIQUE(workspace_id, team_id)
+  metadata JSONB DEFAULT '{}'::jsonb
 );
 
 CREATE INDEX idx_slack_installations_workspace ON bureau.slack_installations(workspace_id);
@@ -50,6 +49,13 @@ CREATE TABLE IF NOT EXISTS bureau.slack_event_ids (
 CREATE INDEX idx_slack_event_ids_received ON bureau.slack_event_ids(received_at);
 
 COMMENT ON TABLE bureau.slack_event_ids IS 'Dedupe Slack event_ids to prevent processing duplicates/retries';
+
+-- Enable RLS on slack_event_ids
+ALTER TABLE bureau.slack_event_ids ENABLE ROW LEVEL SECURITY;
+
+-- Policy: anyone can insert/select (deduplication is global)
+CREATE POLICY slack_event_ids_insert ON bureau.slack_event_ids FOR INSERT WITH CHECK (true);
+CREATE POLICY slack_event_ids_select ON bureau.slack_event_ids FOR SELECT USING (true);
 
 -- Grant permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON bureau.slack_installations TO bureau_app;

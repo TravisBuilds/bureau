@@ -37,5 +37,5 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION bureau.insert_ingest_log FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION bureau.insert_ingest_log TO bureau_app;
+REVOKE ALL ON FUNCTION bureau.insert_ingest_log(UUID, UUID, UUID, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION bureau.insert_ingest_log(UUID, UUID, UUID, JSONB) TO bureau_app;

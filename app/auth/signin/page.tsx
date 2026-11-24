@@ -34,7 +34,7 @@ function SignInForm() {
       const response = await fetch('/api/auth/send-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, next: searchParams.get('next') || undefined }),
       });
       
       if (!response.ok) {
@@ -78,7 +78,7 @@ function SignInForm() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Sign in to Bureau</h1>
-          <p className="text-slate-600">Know what your last video cost before you make the next one</p>
+          <p className="text-slate-600">Your team's command center: what needs you today, and what your agents can handle.</p>
         </div>
         
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-4">

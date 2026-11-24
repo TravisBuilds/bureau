@@ -1,20 +1,35 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function SignUpPage() {
+function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
+  const [signInUrl, setSignInUrl] = useState('');
+
+  // /auth/callback sends signed-in users with no workspace here (?error=invite-required).
+  // Without this they saw the blank sign-up form with no explanation.
+  useEffect(() => {
+    if (searchParams.get('error') === 'invite-required') {
+      setError(
+        "You're signed in, but this email isn't a member of a Bureau workspace yet. " +
+        'Enter your invite code below, then open the new magic link in this same browser.'
+      );
+    }
+  }, [searchParams]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSignInUrl('');
     
     try {
       // Validate invite code
@@ -27,6 +42,10 @@ export default function SignUpPage() {
       if (!validateResponse.ok) {
         const data = await validateResponse.json();
         setError(data.error || 'Invalid invite code');
+        // Bot-connect code typed into the invite box: offer the sign-in link that keeps it
+        if (data.isDeviceCode && typeof data.signInUrl === 'string' && data.signInUrl.startsWith('/auth/signin')) {
+          setSignInUrl(data.signInUrl);
+        }
         setLoading(false);
         return;
       }
@@ -79,10 +98,22 @@ export default function SignUpPage() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Welcome to Bureau</h1>
-          <p className="text-slate-600">Know what your last video cost before you make the next one</p>
+          <p className="text-slate-600">Your team's command center: what needs you today, and what your agents can handle.</p>
         </div>
         
-        <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold">Join Bureau</h2>
+            <button
+              type="button"
+              onClick={() => router.push('/auth/signin')}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+            >
+              Sign in
+            </button>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
               Email
@@ -118,6 +149,11 @@ export default function SignUpPage() {
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-800">{error}</p>
+              {signInUrl && (
+                <a href={signInUrl} className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline">
+                  Sign in and connect this bot
+                </a>
+              )}
             </div>
           )}
           
@@ -128,27 +164,25 @@ export default function SignUpPage() {
           >
             {loading ? 'Sending...' : 'Send magic link'}
           </button>
-          
-          <p className="text-sm text-slate-500 text-center">
-            Already have an account?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/auth/signin')}
-              className="text-highstreet-purple hover:underline"
-            >
-              Sign in
-            </button>
-          </p>
         </form>
         
-        <div className="mt-6 text-center text-sm text-slate-500">
-          <p>
-            Pilot access only. Free: 2 streams, manual cost ledger.
-            <br />
-            Plus ($9/mo): unlimited streams, API connectors.
-          </p>
+          <div className="mt-6 text-center text-sm text-slate-500">
+            <p>
+              Pilot access only. Free: 2 streams, manual cost ledger.
+              <br />
+              Plus ($9/mo): unlimited streams, API connectors.
+            </p>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <SignUpForm />
+    </Suspense>
   );
 }

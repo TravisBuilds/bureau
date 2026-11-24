@@ -207,14 +207,14 @@ export async function POST(request: NextRequest) {
               inputSchema: {
                 type: 'object',
                 properties: {
-                  clone_id: { type: 'string', description: 'Clone UUID' },
+                  clone_id: { type: 'string', description: 'Clone UUID (optional, resolves from agent link)' },
                   responsibilities: { type: 'string' },
                   active_work: { type: 'string' },
                   decisions_pending: { type: 'string' },
                   recent_output: { type: 'string' },
                   availability: { type: 'string' }
                 },
-                required: ['clone_id']
+                required: []
               }
             },
             {
@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
               inputSchema: {
                 type: 'object',
                 properties: {
-                  clone_id: { type: 'string', description: 'Clone UUID' },
+                  clone_id: { type: 'string', description: 'Clone UUID (optional, resolves from agent link)' },
                   date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
                   top_priority: { type: 'string' },
                   active: { type: 'array', items: { type: 'string' } },
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
                   out_of_office: { type: 'boolean' },
                   confidence: { type: 'string' }
                 },
-                required: ['clone_id', 'date', 'top_priority']
+                required: ['date', 'top_priority']
               }
             },
             {
@@ -566,7 +566,21 @@ export async function POST(request: NextRequest) {
       }
       
       if (toolName === 'bureau_update_profile') {
-        const { clone_id, responsibilities, active_work, decisions_pending, recent_output, availability } = toolArgs;
+        const { clone_id: providedCloneId, responsibilities, active_work, decisions_pending, recent_output, availability } = toolArgs;
+        
+        // Resolve clone_id from agent_link if not provided
+        let clone_id = providedCloneId;
+        if (!clone_id && cred.agent_link_id) {
+          const cloneRows = await withUser(cred.user_id, cred.user_email, async (client) =>
+            (await client.query(
+              `SELECT id FROM bureau.digital_clones WHERE agent_link_id = $1 LIMIT 1`,
+              [cred.agent_link_id]
+            )).rows as Array<{ id: string }>
+          );
+          if (cloneRows.length > 0) {
+            clone_id = cloneRows[0].id;
+          }
+        }
         
         if (!clone_id) {
           return NextResponse.json({
@@ -574,7 +588,7 @@ export async function POST(request: NextRequest) {
             id,
             error: {
               code: -32602,
-              message: 'Missing required parameter: clone_id'
+              message: 'clone_id required or no clone found for this agent link'
             }
           } as MCPResponse);
         }
@@ -624,9 +638,23 @@ export async function POST(request: NextRequest) {
       
       if (toolName === 'bureau_post_heartbeat') {
         const { 
-          clone_id, date, top_priority, active, blocked, decisions_waiting_on_me,
+          clone_id: providedCloneId, date, top_priority, active, blocked, decisions_waiting_on_me,
           waiting_on_others, shipped_since_last, helping, out_of_office, confidence 
         } = toolArgs;
+        
+        // Resolve clone_id from agent_link if not provided
+        let clone_id = providedCloneId;
+        if (!clone_id && cred.agent_link_id) {
+          const cloneRows = await withUser(cred.user_id, cred.user_email, async (client) =>
+            (await client.query(
+              `SELECT id FROM bureau.digital_clones WHERE agent_link_id = $1 LIMIT 1`,
+              [cred.agent_link_id]
+            )).rows as Array<{ id: string }>
+          );
+          if (cloneRows.length > 0) {
+            clone_id = cloneRows[0].id;
+          }
+        }
         
         if (!clone_id || !date || !top_priority) {
           return NextResponse.json({
@@ -634,7 +662,7 @@ export async function POST(request: NextRequest) {
             id,
             error: {
               code: -32602,
-              message: 'Missing required parameters: clone_id, date, top_priority'
+              message: clone_id ? 'Missing required parameters: date, top_priority' : 'clone_id required or no clone found for this agent link'
             }
           } as MCPResponse);
         }

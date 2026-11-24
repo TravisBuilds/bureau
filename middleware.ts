@@ -20,6 +20,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/oauth/') ||  // OAuth token, revoke, client lookup
     pathname.startsWith('/api/mcp') ||  // MCP server (legacy)
     pathname.startsWith('/mcp') ||  // MCP server (canonical)
+    pathname.startsWith('/api/slack/') ||  // Slack events webhook
     pathname.startsWith('/.well-known/');
 
   if (isPublic) {

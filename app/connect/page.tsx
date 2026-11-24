@@ -5,34 +5,39 @@ import { useRouter } from 'next/navigation';
 
 export default function ConnectPage() {
   const router = useRouter();
-  const [connections, setConnections] = useState<any[]>([]);
-  const [pageLoadTime] = useState(Date.now());
+  const [newLinks, setNewLinks] = useState<{ id: string; agent_label: string; client_name: string }[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Poll for new connections
+  // Poll /api/connections; anything not present on the first fetch is a new connection.
   useEffect(() => {
+    let baseline: Set<string> | null = null;
+    let stopped = false;
     const checkConnections = async () => {
       try {
-        const res = await fetch('/api/connections');
-        if (res.ok) {
-          const data = await res.json();
-          const newConnections = data.filter((c: any) => 
-            new Date(c.created_at).getTime() > pageLoadTime
-          );
-          setConnections(newConnections);
+        const res = await fetch('/api/connections', { cache: 'no-store' });
+        if (!res.ok || stopped) return;
+        const data = await res.json();
+        const links: { id: string; agent_label: string; client_name: string }[] = [];
+        for (const c of data.connections || []) {
+          for (const l of c.agent_links || []) {
+            links.push({ id: l.id, agent_label: l.agent_label, client_name: c.client_name });
+          }
         }
+        if (!baseline) {
+          baseline = new Set(links.map(l => l.id));
+          return;
+        }
+        const fresh = links.filter(l => !baseline!.has(l.id));
+        if (fresh.length) setNewLinks(fresh);
       } catch (err) {
         console.error('Failed to fetch connections:', err);
       }
     };
 
-    // Initial check
     checkConnections();
-    
-    // Poll every 2 seconds
     const interval = setInterval(checkConnections, 2000);
-    return () => clearInterval(interval);
-  }, [pageLoadTime]);
+    return () => { stopped = true; clearInterval(interval); };
+  }, []);
 
   const copyToClipboard = async (text: string, id: string) => {
     try {
@@ -44,13 +49,12 @@ export default function ConnectPage() {
     }
   };
 
-  const mcpUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/mcp`
-    : 'https://bureau-krustbuild.vercel.app/mcp';
+  // Same value on server and client (no hydration mismatch)
+  const mcpUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app'}/mcp`;
 
   const claudeUrl = `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Bureau&connectorUrl=${encodeURIComponent(mcpUrl)}`;
-  const chatgptUrl = 'https://chatgpt.com/g/settings/plugins';
-  const grokBotMessage = `Add this MCP server: ${mcpUrl}`;
+  const chatgptUrl = 'https://chatgpt.com/plugins';
+  const grokBotMessage = `Add this MCP server and connect me to it: ${mcpUrl}`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
@@ -63,13 +67,13 @@ export default function ConnectPage() {
         </div>
 
         {/* Success banner */}
-        {connections.length > 0 && (
+        {newLinks.length > 0 && (
           <div className="mb-8 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center gap-2 text-green-800 font-medium">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
-              Connected ✓ {connections[0].agent_label}
+              Connected ✓ {newLinks.map(l => l.agent_label).join(', ')}. You\u2019re done.
             </div>
           </div>
         )}
@@ -102,7 +106,8 @@ export default function ConnectPage() {
             
             <p className="text-xs text-gray-500 mt-3">
               <strong>Steps:</strong> Click Add → Approve on Bureau → Done.<br />
-              Not signed in? Sign in to Claude, then press the button again.
+              Not signed in? Sign in to Claude, then press the button again.<br />
+              Claude Free allows only one custom connector.
             </p>
           </div>
 
@@ -114,7 +119,7 @@ export default function ConnectPage() {
               </div>
               <div className="flex-1">
                 <h2 className="text-xl font-semibold text-gray-900">ChatGPT</h2>
-                <p className="text-sm text-gray-600">Plus, Pro, Business, Enterprise</p>
+                <p className="text-sm text-gray-600">Business, Enterprise, Pro</p>
               </div>
             </div>
             
@@ -125,8 +130,8 @@ export default function ConnectPage() {
             <div className="space-y-3">
               <button
                 onClick={() => {
-                  copyToClipboard(mcpUrl, 'chatgpt');
-                  window.open(chatgptUrl, '_blank');
+                  void copyToClipboard(mcpUrl, 'chatgpt');
+                  window.open(chatgptUrl, '_blank', 'noopener');
                 }}
                 className="block w-full px-4 py-3 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-center"
               >
@@ -138,6 +143,9 @@ export default function ConnectPage() {
                 <p><strong>2.</strong> Paste the URL → OAuth → Create as plugin → Install</p>
                 <p><strong>3.</strong> Approve on Bureau</p>
               </div>
+              <p className="text-xs text-gray-500">
+                On ChatGPT Pro, Bureau can read but can&apos;t post your daily check-in. Plus isn&apos;t officially supported by OpenAI.
+              </p>
             </div>
           </div>
 

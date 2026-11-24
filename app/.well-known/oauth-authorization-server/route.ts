@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ALLOWED_SCOPES } from '@/lib/oauth-scopes';
 
 /**
  * RFC 8414 OAuth Authorization Server Metadata
@@ -23,8 +24,9 @@ export async function GET() {
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'], // Public clients
     service_documentation: `${baseUrl}/docs/oauth`,
-    scopes_supported: ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'],
-    client_id_metadata_document_supported: true,
+    scopes_supported: ALLOWED_SCOPES,
+    // CIMD is not advertised: CIMD clients are not stored in bureau.oauth_clients, so the
+    // oauth_codes/oauth_grants client_id foreign keys would reject them. Needs a migration first.
     authorization_response_iss_parameter_supported: true
   });
 }

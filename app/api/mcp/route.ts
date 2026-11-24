@@ -171,6 +171,7 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_list_streams',
+              annotations: { readOnlyHint: true },
               description: 'List streams accessible to this agent',
               inputSchema: {
                 type: 'object',
@@ -179,6 +180,7 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_whoami',
+              annotations: { readOnlyHint: true },
               description: 'Get information about this agent connection',
               inputSchema: {
                 type: 'object',
@@ -219,7 +221,7 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_post_heartbeat',
-              description: 'Post daily heartbeat update',
+              description: 'Post your daily check-in (heartbeat) for your Digital Clone. Call once a day; clone_id is optional.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -240,6 +242,7 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_team_health',
+              annotations: { readOnlyHint: true },
               description: 'Get team health dashboard data',
               inputSchema: {
                 type: 'object',
@@ -248,14 +251,15 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_get_questions',
+              annotations: { readOnlyHint: true },
               description: 'Get questions for this clone',
               inputSchema: {
                 type: 'object',
                 properties: {
-                  clone_id: { type: 'string', description: 'Clone UUID' },
+                  clone_id: { type: 'string', description: 'Clone UUID (optional, resolves from agent link)' },
                   status: { type: 'string', enum: ['open', 'answered', 'escalated', 'closed'], description: 'Filter by status' }
                 },
-                required: ['clone_id']
+                required: []
               }
             },
             {
@@ -764,7 +768,21 @@ export async function POST(request: NextRequest) {
       }
       
       if (toolName === 'bureau_get_questions') {
-        const { clone_id, status } = toolArgs;
+        const { clone_id: providedCloneId, status } = toolArgs;
+        
+        // Resolve clone_id from agent_link if not provided
+        let clone_id = providedCloneId;
+        if (!clone_id && cred.agent_link_id) {
+          const cloneRows = await withUser(cred.user_id, cred.user_email, async (client) =>
+            (await client.query(
+              `SELECT id FROM bureau.digital_clones WHERE agent_link_id = $1 LIMIT 1`,
+              [cred.agent_link_id]
+            )).rows as Array<{ id: string }>
+          );
+          if (cloneRows.length > 0) {
+            clone_id = cloneRows[0].id;
+          }
+        }
         
         if (!clone_id) {
           return NextResponse.json({
@@ -772,7 +790,7 @@ export async function POST(request: NextRequest) {
             id,
             error: {
               code: -32602,
-              message: 'Missing required parameter: clone_id'
+              message: 'clone_id required or no clone found for this agent link'
             }
           } as MCPResponse);
         }

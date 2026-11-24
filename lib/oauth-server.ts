@@ -8,6 +8,7 @@
 
 import crypto from 'crypto';
 import { query, withUser } from './db';
+import { ensureCloneForLink, cloneVendorFor } from './auto-clone';
 
 // Token generation
 export function generateToken(prefix: string): { token: string; hash: string; tokenPrefix: string } {
@@ -58,17 +59,20 @@ export function verifyPKCE(codeVerifier: string, codeChallenge: string, method: 
 
 // Validate redirect URI (exact match, HTTPS or localhost)
 export function validateRedirectUri(uri: string, allowedUris: string[]): boolean {
-  if (!allowedUris.includes(uri)) {
+  if (typeof uri !== 'string' || !allowedUris.includes(uri)) {
     return false;
   }
   
   try {
     const url = new URL(uri);
-    // Must be HTTPS or localhost
+    // HTTPS, http loopback (RFC 8252 §7.3), or Cursor's private-use callback (also used by Grok Bot)
     if (url.protocol === 'https:') {
       return true;
     }
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    if (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')) {
+      return true;
+    }
+    if (url.protocol === 'cursor:' && uri.startsWith('cursor://anysphere.cursor-mcp/')) {
       return true;
     }
     return false;
@@ -191,12 +195,11 @@ export async function exchangeCode(
       [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
     );
     
-    // Auto-create the clone for this agent link
-    const handle = codeData.agent_label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    await client.query(
-      `SELECT bureau.register_clone($1, $2, $3, $4, $5, $6, 'mcp', NULL, NULL, NULL)`,
-      [codeData.workspace_id, codeData.user_id, agentLinkId, codeData.agent_label, handle, vendor]
-    );
+    // Auto-create the clone for this agent link (fail-soft; never blocks token issuance)
+    await ensureCloneForLink(client, {
+      workspaceId: codeData.workspace_id, userId: codeData.user_id, agentLinkId,
+      label: codeData.agent_label, vendor: cloneVendorFor(vendor, codeData.redirect_uri),
+    });
     
     return { grantId, agentLinkId };
   });
@@ -411,13 +414,11 @@ export async function pollDeviceCode(
     );
     const agentLinkId: string = linkRows.rows[0].id;
     
-    // Auto-create clone for device flow
-    const label = device.agent_label || 'Script Bot';
-    const handle = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    await client.query(
-      `SELECT bureau.register_clone($1, $2, $3, $4, $5, 'script', 'mcp', NULL, NULL, NULL)`,
-      [device.workspace_id, device.user_id, agentLinkId, label, handle]
-    );
+    // Auto-create clone for device flow (fail-soft; never blocks token issuance)
+    await ensureCloneForLink(client, {
+      workspaceId: device.workspace_id!, userId: device.user_id!, agentLinkId,
+      label: device.agent_label || device.client_name || 'Script Bot', vendor: 'custom',
+    });
     
     return { grantId: id, agentLinkId };
   });

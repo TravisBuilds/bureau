@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { startDeviceFlow } from '@/lib/oauth-server';
 
-// Scope allowlist
-const ALLOWED_SCOPES = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
+import { ALLOWED_SCOPES, resolveScopes } from '@/lib/oauth-scopes';
 
 /**
  * POST /api/oauth/device - RFC 8628 Device Authorization Grant
@@ -12,19 +11,20 @@ export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get('content-type');
     let clientName = 'Script';
-    let scope = 'ingest:write';
+    let scope = '';
     
     if (contentType?.includes('application/json')) {
       const body = await request.json();
       clientName = body.client_name || body.clientName || 'Script';
-      scope = body.scope || 'ingest:write';
+      scope = typeof body.scope === 'string' ? body.scope : '';
     } else {
       const body = await request.formData();
       clientName = body.get('client_name')?.toString() || 'Script';
-      scope = body.get('scope')?.toString() || 'ingest:write';
+      scope = body.get('scope')?.toString() || '';
     }
     
-    const scopes = scope.split(' ').filter(Boolean);
+    const scopes = resolveScopes(scope);
+    clientName = String(clientName).slice(0, 100);
     
     // Validate scopes against allowlist
     const invalidScopes = scopes.filter((s: string) => !ALLOWED_SCOPES.includes(s));

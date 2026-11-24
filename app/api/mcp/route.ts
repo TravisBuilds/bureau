@@ -203,6 +203,42 @@ export async function POST(request: NextRequest) {
                 type: 'object',
                 properties: {}
               }
+            },
+            {
+              name: 'bureau_get_questions',
+              description: 'Get questions for this clone',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  clone_id: { type: 'string', description: 'Clone UUID' },
+                  status: { type: 'string', enum: ['open', 'answered', 'escalated', 'closed'], description: 'Filter by status' }
+                },
+                required: ['clone_id']
+              }
+            },
+            {
+              name: 'bureau_answer_question',
+              description: 'Answer a question',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  question_id: { type: 'string', description: 'Question UUID' },
+                  answer_text: { type: 'string', description: 'Answer text' }
+                },
+                required: ['question_id', 'answer_text']
+              }
+            },
+            {
+              name: 'bureau_escalate_question',
+              description: 'Escalate a question to human owner',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  question_id: { type: 'string', description: 'Question UUID' },
+                  escalation_reason: { type: 'string', description: 'Reason for escalation' }
+                },
+                required: ['question_id', 'escalation_reason']
+              }
             }
           ]
         }
@@ -648,6 +684,174 @@ export async function POST(request: NextRequest) {
             error: {
               code: -32603,
               message: error.message || 'Failed to get team health'
+            }
+          } as MCPResponse);
+        }
+      }
+      
+      if (toolName === 'bureau_get_questions') {
+        const { clone_id, status } = toolArgs;
+        
+        if (!clone_id) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Missing required parameter: clone_id'
+            }
+          } as MCPResponse);
+        }
+        
+        // Check questions:read scope
+        if (!cred.scopes.includes('questions:read')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: questions:read'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          const result = await query(
+            `SELECT * FROM bureau.get_clone_questions($1, $2)`,
+            [clone_id, status || null]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to get questions'
+            }
+          } as MCPResponse);
+        }
+      }
+      
+      if (toolName === 'bureau_answer_question') {
+        const { question_id, answer_text } = toolArgs;
+        
+        if (!question_id || !answer_text) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Missing required parameters: question_id, answer_text'
+            }
+          } as MCPResponse);
+        }
+        
+        // Check questions:write scope
+        if (!cred.scopes.includes('questions:write')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: questions:write'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          await query(
+            `SELECT bureau.answer_question($1, $2, TRUE)`,
+            [question_id, answer_text]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ success: true }, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to answer question'
+            }
+          } as MCPResponse);
+        }
+      }
+      
+      if (toolName === 'bureau_escalate_question') {
+        const { question_id, escalation_reason } = toolArgs;
+        
+        if (!question_id || !escalation_reason) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Missing required parameters: question_id, escalation_reason'
+            }
+          } as MCPResponse);
+        }
+        
+        // Check questions:write scope
+        if (!cred.scopes.includes('questions:write')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: questions:write'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          await query(
+            `SELECT bureau.escalate_question($1, $2)`,
+            [question_id, escalation_reason]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ success: true }, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to escalate question'
             }
           } as MCPResponse);
         }

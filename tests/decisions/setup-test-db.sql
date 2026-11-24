@@ -39,9 +39,8 @@ CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
--- Grant basic access to bureau_app
-GRANT USAGE ON SCHEMA auth TO bureau_app;
-GRANT SELECT ON auth.users TO bureau_app;
+-- Grant basic access to bureau_app.
+-- Never grant bureau_app anything on the auth schema (or anon/authenticated membership): seed auth.users as a privileged role.
 GRANT USAGE ON SCHEMA extensions TO bureau_app;
 
 COMMENT ON SCHEMA auth IS 'Stub Supabase auth schema for testing';

@@ -18,6 +18,8 @@ export default defineConfig({
       'tests/oauth-functions-minimal.test.ts',
       'tests/oauth-hardening.test.ts',
       'tests/oauth-hardening-full.test.ts',
+      // Needs a running app server (TEST_BASE_URL, default http://localhost:3000); excluded unless TEST_BASE_URL is set
+      ...(process.env.TEST_BASE_URL ? [] : ['tests/oauth-flow.test.ts']),
       // Legacy DB suites with their own setup (docker-compose / hardcoded creds, or they need
       // bureau_app to touch auth.*, which is forbidden). Superseded by tests/clone-security.test.ts.
       // Set LEGACY_DB_TESTS=1 to include them (npm run test:integration does).

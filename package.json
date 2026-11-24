@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:integration": "docker-compose -f docker-compose.test.yml up -d && sleep 10 && DATABASE_URL=postgresql://postgres:postgres@localhost:5433/bureau_test vitest run tests/integration && docker-compose -f docker-compose.test.yml down",
+    "test:integration": "docker-compose -f docker-compose.test.yml up -d && sleep 10 && LEGACY_DB_TESTS=1 DATABASE_URL=postgresql://postgres:postgres@localhost:5433/bureau_test vitest run tests/integration && docker-compose -f docker-compose.test.yml down",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -22,14 +22,17 @@
     "@types/pg": "^8.23.1",
     "bcrypt": "^6.0.0",
     "date-fns": "^4.4.0",
+    "ipaddr.js": "^2.5.0",
     "lucide-react": "^1.77.0",
     "next": "16.4.6",
     "next-auth": "^5.0.0-beta.32",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "undici": "^8.13.1"
   },
   "devDependencies": {
     "@embedded-postgres/linux-x64": "^18.7.0-beta.19",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^22",

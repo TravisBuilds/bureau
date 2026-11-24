@@ -35,6 +35,12 @@ export async function handlePostLogin(
     cookieStore.delete('bureau_invite');
   }
   
+  // Accept any pending workspace invites for this email
+  await query(
+    'SELECT * FROM bureau.accept_invite($1, $2)',
+    [email, userId]
+  );
+  
   const workspaceId = await withUser(userId, email, async (client) => {
     // Check if user has a workspace
     const workspaces = await client.query(

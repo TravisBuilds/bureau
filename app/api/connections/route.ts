@@ -1,107 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MockProvider } from '@/lib/providers/MockProvider';
-import { storeCredentials, listProjectCredentials, sanitizeForClient } from '@/lib/credential-storage';
-import { PROVIDER_INFO } from '@/lib/agent-provider-interface';
+import { requireAuth } from '@/lib/auth-helpers';
+import { withUser } from '@/lib/db';
 
 /**
- * POST /api/connections
- * Connect to an agent provider (server-side only - handles credentials)
- */
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { projectName, providerType, apiKey, webhookUrl } = body;
-    
-    if (!projectName || !providerType) {
-      return NextResponse.json(
-        { error: 'Missing required fields: projectName, providerType' },
-        { status: 400 }
-      );
-    }
-    
-    // For now, only mock provider is implemented (no paid API calls)
-    if (providerType !== 'mock') {
-      return NextResponse.json(
-        {
-          error: 'Provider not yet implemented',
-          message: `${providerType} provider requires setup. See README for instructions.`,
-          setupNeeded: PROVIDER_INFO[providerType as keyof typeof PROVIDER_INFO]?.setupInstructions,
-        },
-        { status: 501 }
-      );
-    }
-    
-    // Connect to provider
-    const provider = new MockProvider();
-    const credentials = await provider.connect({ apiKey });
-    
-    // Store credentials server-side (encrypted, never exposed to client)
-    storeCredentials(
-      projectName,
-      credentials.providerId,
-      providerType,
-      apiKey || 'mock-key'
-    );
-    
-    // List available agents
-    const agents = await provider.listAgents(credentials);
-    
-    // Return sanitized response (no credentials)
-    return NextResponse.json(
-      sanitizeForClient({
-        success: true,
-        providerId: credentials.providerId,
-        providerType,
-        agents: agents.map(a => sanitizeForClient(a)),
-      }),
-      { status: 200 }
-    );
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Connection failed', message: (error as Error).message },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * GET /api/connections?projectName=X
- * List connections for a project (metadata only, no credentials)
+ * GET /api/connections - List user's OAuth connections
  */
 export async function GET(request: NextRequest) {
   try {
-    const projectName = request.nextUrl.searchParams.get('projectName');
+    const user = await requireAuth();
     
-    if (!projectName) {
-      return NextResponse.json(
-        { error: 'Missing projectName parameter' },
-        { status: 400 }
-      );
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
     
-    const credentials = listProjectCredentials(projectName);
-    
-    // For mock provider, also list available agents
-    const mockProvider = new MockProvider();
-    const mockAgents = await mockProvider.listAgents({
-      providerId: 'mock-provider',
-      type: 'mock',
-      encrypted: '',
-      createdAt: new Date().toISOString(),
+    // Read as the signed-in user so oauth_grants / agent_links RLS applies
+    const connections = await withUser(user.id, user.email, async (client) => {
+      const grants = (await client.query(
+        `SELECT g.id, g.client_id, c.client_name, g.vendor, g.connected_at, g.last_seen_at, g.status
+         FROM bureau.oauth_grants g
+         JOIN bureau.oauth_clients c ON c.client_id = g.client_id
+         WHERE g.workspace_id = $1 AND g.user_id = $2
+         ORDER BY g.connected_at DESC`,
+        [user.workspaceId, user.id]
+      )).rows as Array<{
+        id: string; client_id: string; client_name: string; vendor: string;
+        connected_at: Date; last_seen_at: Date | null; status: string;
+      }>;
+      const out = [];
+      for (const grant of grants) {
+        const links = (await client.query(
+          `SELECT id, agent_label,
+                  array_length(stream_ids, 1) as stream_count,
+                  last_used_at
+           FROM bureau.agent_links
+           WHERE grant_id = $1 AND status = 'active'
+           ORDER BY created_at`,
+          [grant.id]
+        )).rows as Array<{ id: string; agent_label: string; stream_count: number; last_used_at: Date | null }>;
+        out.push({ ...grant, agent_links: links });
+      }
+      return out;
     });
     
-    return NextResponse.json(
-      sanitizeForClient({
-        projectName,
-        connections: credentials,
-        availableAgents: mockAgents.map(a => sanitizeForClient(a)),
-      }),
-      { status: 200 }
-    );
+    return NextResponse.json({ connections });
+    
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to list connections', message: (error as Error).message },
-      { status: 500 }
-    );
+    if (error instanceof Response) {
+      return error;
+    }
+    console.error('Error listing connections:', error);
+    return NextResponse.json({ error: 'Failed to list connections' }, { status: 500 });
   }
 }

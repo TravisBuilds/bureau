@@ -16,7 +16,12 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/api/auth/') ||  // send-magic-link, validate-invite
-    pathname.startsWith('/api/ingest');
+    pathname.startsWith('/api/ingest') ||
+    pathname.startsWith('/api/oauth/') ||  // OAuth token, revoke, client lookup
+    pathname.startsWith('/api/mcp') ||  // MCP server (legacy)
+    pathname.startsWith('/mcp') ||  // MCP server (canonical)
+    pathname.startsWith('/api/slack/') ||  // Slack events webhook
+    pathname.startsWith('/.well-known/');
 
   if (isPublic) {
     return NextResponse.next();

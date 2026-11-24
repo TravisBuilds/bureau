@@ -42,27 +42,38 @@ export async function POST(request: NextRequest) {
     
     const token = authHeader.substring(7); // Remove "Bearer "
     
-    // Look up token using SECURITY DEFINER function (bypasses RLS, returns email)
-    const tokenRows = await query<{
+    // Resolve credential (OAuth access token or legacy ingest token)
+    const credRows = await query<{
       workspace_id: string;
       user_id: string;
       user_email: string;
-      token_id: string;
+      token_id: string | null;
+      agent_link_id: string | null;
+      allowed_stream_ids: string[] | null;
+      allow_create_streams: boolean;
+      scopes: string[];
     }>(
-      `SELECT workspace_id, user_id, user_email, token_id
-       FROM bureau.resolve_ingest_token($1)`,
+      `SELECT workspace_id, user_id, user_email, token_id, agent_link_id, 
+              allowed_stream_ids, allow_create_streams, scopes
+       FROM bureau.resolve_credential($1)`,
       [token]
     );
     
-    // RETURNS TABLE means empty set on miss (not NULL row)
-    if (tokenRows.length === 0) {
+    if (credRows.length === 0) {
       return NextResponse.json({ 
         error: 'Invalid or revoked token' 
       }, { status: 401 });
     }
     
-    const tokenInfo = tokenRows[0];
+    const tokenInfo = credRows[0];
     const userEmail = tokenInfo.user_email;
+    
+    // Check scopes for OAuth tokens (403 for missing scope)
+    if (tokenInfo.agent_link_id && !tokenInfo.scopes.includes('ingest:write')) {
+      return NextResponse.json({ 
+        error: 'Missing required scope: ingest:write' 
+      }, { status: 403 });
+    }
     
     // 2. Parse payload (catch malformed JSON)
     let payload: IngestPayload;
@@ -109,7 +120,7 @@ export async function POST(request: NextRequest) {
     // 4. Run queries with proper user context
     const { withUser } = await import('@/lib/db');
     
-    const { streamId, ingestLogId, decisionId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
+    const result = await withUser(tokenInfo.user_id, userEmail, async (client) => {
       // Look up or create stream by name or ID
       let streamId: string | null = null;
       
@@ -131,6 +142,16 @@ export async function POST(request: NextRequest) {
           
           if (uuidStreamRows.rows.length > 0) {
             streamId = uuidStreamRows.rows[0].id;
+            
+            // For OAuth tokens: check if stream is in allowed list (403)
+            if (tokenInfo.allowed_stream_ids && streamId && !tokenInfo.allowed_stream_ids.includes(streamId)) {
+              const errorData = {
+                error: 'Stream not in allowed list for this token',
+                stream_id: streamId
+              };
+              await client.query('ROLLBACK');
+              return NextResponse.json(errorData, { status: 403 });
+            }
           } else {
             // UUID format but not an existing stream -> 404
             throw new Error(`STREAM_NOT_FOUND:${streamName}`);
@@ -146,7 +167,27 @@ export async function POST(request: NextRequest) {
           
           if (streamRows.rows.length > 0) {
             streamId = streamRows.rows[0].id;
+            
+            // For OAuth tokens: check if stream is in allowed list (403)
+            if (tokenInfo.allowed_stream_ids && streamId && !tokenInfo.allowed_stream_ids.includes(streamId)) {
+              const errorData = {
+                error: 'Stream not in allowed list for this token',
+                stream_id: streamId
+              };
+              await client.query('ROLLBACK');
+              return NextResponse.json(errorData, { status: 403 });
+            }
           } else {
+            // Create stream only if allowed (403)
+            if (tokenInfo.agent_link_id && !tokenInfo.allow_create_streams) {
+              const errorData = {
+                error: 'Stream not found and token cannot create streams',
+                stream_name: streamName
+              };
+              await client.query('ROLLBACK');
+              return NextResponse.json(errorData, { status: 403 });
+            }
+            
             // Check stream count limit (max 50 auto-created streams per workspace)
             const countRows = await client.query(
               `SELECT COUNT(*) as count FROM bureau.streams 
@@ -209,10 +250,11 @@ export async function POST(request: NextRequest) {
       };
       
       const logRows = await client.query(
-        `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::jsonb) as id`,
+        `SELECT bureau.insert_ingest_log($1::uuid, $2::uuid, $3::uuid, $4::jsonb) as id`,
         [
           tokenInfo.workspace_id,
           tokenInfo.token_id,
+          tokenInfo.agent_link_id,
           JSON.stringify(fullPayload)
         ]
       );
@@ -224,14 +266,19 @@ export async function POST(request: NextRequest) {
       };
     });
     
+    // Check if result is a NextResponse (error return)
+    if (result instanceof NextResponse) {
+      return result;
+    }
+    
     // 5. For now, all ingests are logged as pending for manual review
     // Future: auto-process cost entries
     
     return NextResponse.json({ 
       success: true,
-      ingest_id: ingestLogId,
-      stream_id: streamId,
-      decision_id: decisionId,
+      ingest_id: result.ingestLogId,
+      stream_id: result.streamId,
+      decision_id: result.decisionId,
       status: 'pending'
     });
     

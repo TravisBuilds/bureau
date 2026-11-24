@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     // 4. Run queries with proper user context
     const { withUser } = await import('@/lib/db');
     
-    const { streamId, ingestLogId, decisionId } = await withUser(tokenInfo.user_id, userEmail, async (client) => {
+    const result = await withUser(tokenInfo.user_id, userEmail, async (client) => {
       // Look up or create stream by name or ID
       let streamId: string | null = null;
       

@@ -266,14 +266,19 @@ export async function POST(request: NextRequest) {
       };
     });
     
+    // Check if result is a NextResponse (error return)
+    if (result instanceof NextResponse) {
+      return result;
+    }
+    
     // 5. For now, all ingests are logged as pending for manual review
     // Future: auto-process cost entries
     
     return NextResponse.json({ 
       success: true,
-      ingest_id: ingestLogId,
-      stream_id: streamId,
-      decision_id: decisionId,
+      ingest_id: result.ingestLogId,
+      stream_id: result.streamId,
+      decision_id: result.decisionId,
       status: 'pending'
     });
     

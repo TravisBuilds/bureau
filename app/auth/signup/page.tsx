@@ -1,15 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function SignUpPage() {
+function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'invite-required') {
+      setError("You're signed in, but this email isn't a member of a Bureau workspace yet. Enter an invite code to join.");
+    }
+  }, [searchParams]);
+
+  // /auth/callback sends signed-in users with no workspace here (?error=invite-required).
+  // Without this they saw the blank sign-up form with no explanation.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('error') === 'invite-required') {
+      setError(
+        "You're signed in, but this email isn't a member of a Bureau workspace yet. " +
+        'Enter your invite code below, then open the new magic link in this same browser.'
+      );
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,5 +170,13 @@ export default function SignUpPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <SignUpForm />
+    </Suspense>
   );
 }

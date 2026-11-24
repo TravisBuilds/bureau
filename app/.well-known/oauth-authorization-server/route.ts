@@ -23,6 +23,6 @@ export async function GET() {
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'], // Public clients
     service_documentation: `${baseUrl}/docs/oauth`,
-    scopes_supported: ['ingest:write']
+    scopes_supported: ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read']
   });
 }

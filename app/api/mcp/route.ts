@@ -142,6 +142,67 @@ export async function POST(request: NextRequest) {
                 type: 'object',
                 properties: {}
               }
+            },
+            {
+              name: 'bureau_register_clone',
+              description: 'Register or update a digital clone for a team member',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  display_name: { type: 'string', description: 'Display name (e.g. JacksBot)' },
+                  handle: { type: 'string', description: 'Unique handle (e.g. jacksbot)' },
+                  vendor: { type: 'string', enum: ['openai', 'anthropic', 'cursor', 'custom'] },
+                  timezone: { type: 'string', description: 'IANA timezone (e.g. America/Los_Angeles)' },
+                  working_hours: { type: 'object', description: 'Working hours schedule' },
+                  slack_handle: { type: 'string', description: 'Slack handle (informational)' }
+                },
+                required: ['display_name', 'handle', 'vendor']
+              }
+            },
+            {
+              name: 'bureau_update_profile',
+              description: 'Update digital clone profile',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  clone_id: { type: 'string', description: 'Clone UUID' },
+                  responsibilities: { type: 'string' },
+                  active_work: { type: 'string' },
+                  decisions_pending: { type: 'string' },
+                  recent_output: { type: 'string' },
+                  availability: { type: 'string' }
+                },
+                required: ['clone_id']
+              }
+            },
+            {
+              name: 'bureau_post_heartbeat',
+              description: 'Post daily heartbeat update',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  clone_id: { type: 'string', description: 'Clone UUID' },
+                  date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
+                  top_priority: { type: 'string' },
+                  active: { type: 'array', items: { type: 'string' } },
+                  blocked: { type: 'array', items: { type: 'string' } },
+                  decisions_waiting_on_me: { type: 'array', items: { type: 'string' } },
+                  waiting_on_others: { type: 'array', items: { type: 'object' } },
+                  shipped_since_last: { type: 'array', items: { type: 'string' } },
+                  helping: { type: 'array', items: { type: 'object' } },
+                  out_of_office: { type: 'boolean' },
+                  confidence: { type: 'string' }
+                },
+                required: ['clone_id', 'date', 'top_priority']
+              }
+            },
+            {
+              name: 'bureau_team_health',
+              description: 'Get team health dashboard data',
+              inputSchema: {
+                type: 'object',
+                properties: {}
+              }
             }
           ]
         }
@@ -363,6 +424,233 @@ export async function POST(request: NextRequest) {
             ]
           }
         } as MCPResponse);
+      }
+      
+      if (toolName === 'bureau_register_clone') {
+        const { display_name, handle, vendor, timezone, working_hours, slack_handle } = toolArgs;
+        
+        if (!display_name || !handle || !vendor) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Missing required parameters: display_name, handle, vendor'
+            }
+          } as MCPResponse);
+        }
+        
+        // Check clone:write scope
+        if (!cred.scopes.includes('clone:write')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: clone:write'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          const result = await query<{ register_clone: string }>(
+            `SELECT bureau.register_clone($1, $2, $3, $4, $5, $6, 'v1', $7, $8, $9) as register_clone`,
+            [cred.workspace_id, cred.user_id, cred.agent_link_id, display_name, handle, vendor, timezone, working_hours, slack_handle]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    success: true,
+                    clone_id: result[0].register_clone
+                  }, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to register clone'
+            }
+          } as MCPResponse);
+        }
+      }
+      
+      if (toolName === 'bureau_update_profile') {
+        const { clone_id, responsibilities, active_work, decisions_pending, recent_output, availability } = toolArgs;
+        
+        if (!clone_id) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Missing required parameter: clone_id'
+            }
+          } as MCPResponse);
+        }
+        
+        // Check clone:write scope
+        if (!cred.scopes.includes('clone:write')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: clone:write'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          await query(
+            `SELECT bureau.update_clone_profile($1, $2, $3, $4, $5, $6)`,
+            [clone_id, responsibilities, active_work, decisions_pending, recent_output, availability]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ success: true }, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to update profile'
+            }
+          } as MCPResponse);
+        }
+      }
+      
+      if (toolName === 'bureau_post_heartbeat') {
+        const { 
+          clone_id, date, top_priority, active, blocked, decisions_waiting_on_me,
+          waiting_on_others, shipped_since_last, helping, out_of_office, confidence 
+        } = toolArgs;
+        
+        if (!clone_id || !date || !top_priority) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32602,
+              message: 'Missing required parameters: clone_id, date, top_priority'
+            }
+          } as MCPResponse);
+        }
+        
+        // Check clone:write scope
+        if (!cred.scopes.includes('clone:write')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: clone:write'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          await query(
+            `SELECT bureau.post_clone_heartbeat($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              clone_id, date, top_priority, 
+              active || [], 
+              blocked || [], 
+              decisions_waiting_on_me || [],
+              waiting_on_others ? JSON.stringify(waiting_on_others) : '[]',
+              shipped_since_last || [],
+              helping ? JSON.stringify(helping) : '[]',
+              out_of_office || false,
+              confidence
+            ]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ success: true }, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to post heartbeat'
+            }
+          } as MCPResponse);
+        }
+      }
+      
+      if (toolName === 'bureau_team_health') {
+        // Check team:read scope
+        if (!cred.scopes.includes('team:read')) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: 'Missing required scope: team:read'
+            }
+          } as MCPResponse);
+        }
+        
+        try {
+          const result = await query(
+            `SELECT * FROM bureau.get_team_health($1)`,
+            [cred.workspace_id]
+          );
+          
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          } as MCPResponse);
+        } catch (error: any) {
+          return NextResponse.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32603,
+              message: error.message || 'Failed to get team health'
+            }
+          } as MCPResponse);
+        }
       }
       
       // Unknown tool

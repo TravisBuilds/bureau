@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const questions = await withUser(user.id, user.email, async () => {
-      return await query<{
+    const questions = await withUser(user.id, user.email, async (client) => {
+      return (await client.query<{
       id: string;
       asker_name: string;
       question_text: string;
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
        ORDER BY q.asked_at DESC
        LIMIT 100`,
         [user.workspaceId]
-      );
+      )).rows;
     });
 
     return NextResponse.json({ questions });
@@ -77,21 +77,21 @@ export async function POST(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const result = await withUser(user.id, user.email, async () => {
+    const result = await withUser(user.id, user.email, async (client) => {
       // Verify target_clone_id is in this workspace
-      const cloneCheck = await query<{ exists: boolean }>(
+      const cloneCheck = await client.query<{ exists: boolean }>(
         `SELECT EXISTS(SELECT 1 FROM bureau.digital_clones WHERE id = $1 AND workspace_id = $2) as exists`,
         [target_clone_id, user.workspaceId]
       );
       
-      if (!cloneCheck[0]?.exists) {
+      if (!cloneCheck.rows[0]?.exists) {
         throw new Error('Clone not found in your workspace');
       }
       
-      return await query<{ ask_question: string }>(
+      return (await client.query<{ ask_question: string }>(
         `SELECT bureau.ask_question($1, $2, $3, NULL, NULL, $4, NULL, 'web') as ask_question`,
         [user.workspaceId, question_text, user.id, target_clone_id]
-      );
+      )).rows;
     });
 
     return NextResponse.json({ 

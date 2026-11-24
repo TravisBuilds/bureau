@@ -66,12 +66,13 @@ export async function POST(request: NextRequest) {
     );
     
     if (credRows.length === 0) {
+      const origin = request.headers.get('origin') || new URL(request.url).origin;
       return new NextResponse(
         JSON.stringify({ error: 'Invalid or revoked token' }),
         { 
           status: 401,
           headers: {
-            'WWW-Authenticate': 'Bearer realm="/mcp", resource_metadata="/.well-known/oauth-protected-resource"'
+            'WWW-Authenticate': `Bearer realm="${origin}/mcp", resource_metadata="${origin}/.well-known/oauth-protected-resource"`
           }
         }
       );

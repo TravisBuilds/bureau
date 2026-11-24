@@ -76,7 +76,7 @@ CREATE OR REPLACE FUNCTION bureau.invite_member(
 ) RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 DECLARE
   v_invite_id UUID;
@@ -144,7 +144,7 @@ CREATE OR REPLACE FUNCTION bureau.accept_invite(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 BEGIN
   -- Mark invites as accepted and add to workspace_members (or reactivate if removed)
@@ -186,7 +186,7 @@ CREATE OR REPLACE FUNCTION bureau.remove_member(
 ) RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = bureau, extensions
+SET search_path = bureau, pg_temp
 AS $$
 DECLARE
   v_remover_role bureau.member_role;

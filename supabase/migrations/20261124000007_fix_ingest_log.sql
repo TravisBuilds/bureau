@@ -29,13 +29,24 @@ AS $$
 DECLARE
   v_log_id UUID;
 BEGIN
+  -- Update last_used_at for legacy tokens
+  IF p_token_id IS NOT NULL THEN
+    UPDATE bureau.ingest_tokens 
+    SET last_used_at = NOW() 
+    WHERE id = p_token_id;
+  END IF;
+  
+  -- Insert with status 'pending' for manual review
   INSERT INTO bureau.ingest_log (workspace_id, token_id, agent_link_id, payload, status)
-  VALUES (p_workspace_id, p_token_id, p_agent_link_id, p_payload, 'approved')
+  VALUES (p_workspace_id, p_token_id, p_agent_link_id, p_payload, 'pending')
   RETURNING id INTO v_log_id;
   
   RETURN v_log_id;
 END;
 $$;
+
+-- Drop old 3-arg overload if it exists
+DROP FUNCTION IF EXISTS bureau.insert_ingest_log(UUID, UUID, JSONB);
 
 REVOKE ALL ON FUNCTION bureau.insert_ingest_log(UUID, UUID, UUID, JSONB) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION bureau.insert_ingest_log(UUID, UUID, UUID, JSONB) TO bureau_app;

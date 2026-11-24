@@ -8,6 +8,7 @@ import { query, withUser } from '@/lib/db';
  */
 
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || '';
+const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || '';
 const FIVE_MINUTES = 5 * 60; // seconds
 
 function verifySlackSignature(
@@ -57,6 +58,8 @@ function verifySlackSignature(
 }
 
 export async function POST(request: NextRequest) {
+  let eventId: string | null = null;
+  
   try {
     // 1. Check for retry header - ignore with 200
     const retryNum = request.headers.get('x-slack-retry-num');
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     const event = payload.event;
-    const eventId = payload.event_id;
+    eventId = payload.event_id;
     const teamId = payload.team_id;
 
     // 6. Dedupe: INSERT ... ON CONFLICT DO NOTHING before any side effects
@@ -108,23 +111,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Resolve workspace from team_id
+    // 7. Resolve workspace from team_id using definer function
     if (!teamId) {
       console.error('No team_id in payload');
       return NextResponse.json({ ok: true });
     }
 
-    const workspaceRows = await query<{ workspace_id: string }>(
-      'SELECT workspace_id FROM bureau.slack_installations WHERE team_id = $1',
+    const workspaceRows = await query<{ slack_resolve_team: string }>(
+      'SELECT bureau.slack_resolve_team($1) as slack_resolve_team',
       [teamId]
     );
 
-    if (workspaceRows.length === 0) {
+    if (workspaceRows.length === 0 || !workspaceRows[0].slack_resolve_team) {
       console.log(`No workspace found for team ${teamId}`);
       return NextResponse.json({ ok: true });
     }
 
-    const workspaceId = workspaceRows[0].workspace_id;
+    const workspaceId = workspaceRows[0].slack_resolve_team;
 
     // 8. Handle app_mention events
     if (event.type === 'app_mention') {
@@ -158,12 +161,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // 9. Look up clone by handle in this workspace only
+      // 9. Look up clone by handle in this workspace using definer function
       const cloneRows = await query<{ id: string; display_name: string; owner_user_id: string }>(
         `SELECT id, display_name, owner_user_id 
-         FROM bureau.digital_clones 
-         WHERE workspace_id = $1 AND handle = $2
-         LIMIT 1`,
+         FROM bureau.slack_find_clone($1, $2)`,
         [workspaceId, handle]
       );
 
@@ -174,31 +175,78 @@ export async function POST(request: NextRequest) {
 
       const clone = cloneRows[0];
 
-      // 10. Record question deterministically (no LLM, no async processing)
+      // 10. Record question deterministically
       // Run with the clone owner's user context for RLS
-      await withUser(clone.owner_user_id, '', async () => {
-        await query(
-          `SELECT bureau.ask_question($1, $2, NULL, $3, $4, $5, $6, 'slack') as ask_question`,
+      // FIX: Correct argument order for ask_question
+      await withUser(clone.owner_user_id, '', async (client) => {
+        await client.query(
+          `SELECT bureau.ask_question($1, $2, NULL, $3, NULL, $4, $5, 'slack') as ask_question`,
           [
-            workspaceId,
-            questionText,
-            `slack-${userId}`,
-            channel,
-            clone.id,
-            ts
+            workspaceId,       // p_workspace_id
+            questionText,      // p_question_text
+            `slack-${userId}`, // p_asker_name
+            clone.id,          // p_target_clone_id (UUID, not string)
+            ts                 // p_source_ref
           ]
         );
       });
 
       console.log(`Recorded Slack question for clone ${handle} in workspace ${workspaceId}`);
 
-      // Deterministic response (no LLM call, no posting back to Slack in webhook)
+      // 11. Post deterministic answer from latest heartbeat
+      if (SLACK_BOT_TOKEN) {
+        try {
+          // Get latest heartbeat
+          const heartbeatRows = await query<{ content: any }>(
+            `SELECT content FROM bureau.clone_heartbeats 
+             WHERE clone_id = $1 
+             ORDER BY date DESC 
+             LIMIT 1`,
+            [clone.id]
+          );
+
+          let answer = `I'm ${clone.display_name}. Ask me anything!`;
+          if (heartbeatRows.length > 0 && heartbeatRows[0].content) {
+            const hb = heartbeatRows[0].content;
+            answer = `${hb.status || 'Working'} - ${hb.summary || 'Standing by'}`;
+          }
+
+          // Post threaded message via Slack API
+          await fetch('https://slack.com/api/chat.postMessage', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${SLACK_BOT_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              channel: channel,
+              thread_ts: ts,
+              text: answer
+            })
+          });
+        } catch (err) {
+          console.error('Failed to post Slack answer:', err);
+          // Don't fail the request if posting fails
+        }
+      }
+
+      // Deterministic response
       return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error('Slack events error:', error);
+    
+    // If processing failed after event_id insert, delete it so retry can work
+    if (eventId) {
+      try {
+        await query('DELETE FROM bureau.slack_event_ids WHERE event_id = $1', [eventId]);
+      } catch (cleanupErr) {
+        console.error('Failed to cleanup event_id:', cleanupErr);
+      }
+    }
+    
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

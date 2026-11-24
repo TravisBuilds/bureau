@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
 
     const { withUser } = await import('@/lib/db');
     
-    const { members, invites } = await withUser(user.id, user.email, async () => {
+    const { members, invites } = await withUser(user.id, user.email, async (client) => {
       // Get members (email is in workspace_members, don't join auth.users)
-      const members = await query<{
+      const members = (await client.query<{
       user_id: string;
       email: string;
       role: string;
@@ -42,10 +42,10 @@ export async function GET(request: NextRequest) {
        WHERE wm.workspace_id = $1 AND wm.removed_at IS NULL
        ORDER BY wm.role, wm.email`,
         [user.workspaceId]
-      );
+      )).rows;
 
       // Get pending invites
-      const invites = await query<{
+      const invites = (await client.query<{
       id: string;
       email: string;
       role: string;
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
          AND i.expires_at > NOW()
        ORDER BY i.invited_at DESC`,
         [user.workspaceId]
-      );
+      )).rows;
       
       return { members, invites };
     });

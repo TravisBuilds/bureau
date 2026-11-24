@@ -34,7 +34,7 @@ function SignInForm() {
       const response = await fetch('/api/auth/send-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, next: searchParams.get('next') || undefined }),
       });
       
       if (!response.ok) {

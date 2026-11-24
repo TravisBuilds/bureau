@@ -7,6 +7,7 @@
 
 import { withUser, query } from './db';
 import { cookies } from 'next/headers';
+import { safeNext, NEXT_COOKIE } from './safe-next';
 
 export interface PostLoginResult {
   redirect: string;
@@ -87,9 +88,15 @@ export async function handlePostLogin(
     return result.rows.length > 0;
   });
 
+  // next comes from the URL/body (untrusted) or the bureau_next cookie set at sign-in.
+  // Only same-origin relative paths are honoured (blocks //evil, /\\evil, absolute URLs).
+  const cookieNext = cookieStore.get(NEXT_COOKIE)?.value;
+  if (cookieNext !== undefined) cookieStore.delete(NEXT_COOKIE);
+  const target = safeNext(nextUrl && nextUrl !== '/' ? nextUrl : cookieNext);
+
   const redirect = isNew 
     ? '/onboarding' 
-    : (nextUrl && nextUrl !== '/' ? nextUrl : '/top-floor');
+    : (target && target !== '/' ? target : '/top-floor');
 
   return { redirect, workspaceId };
 }

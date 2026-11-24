@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthAdapter, LocalAuthAdapter, SupabaseAuthAdapter } from '@/lib/auth-adapter';
 import { query, execute } from '@/lib/db';
 import { cookies } from 'next/headers';
+import { safeNext, NEXT_COOKIE } from '@/lib/safe-next';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, inviteCode } = await request.json();
+    const { email, inviteCode, next } = await request.json();
     
     if (!email) {
       return NextResponse.json({ error: 'Email required' }, { status: 400 });
@@ -58,6 +59,21 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Remember where to go after sign-in (e.g. /connect/device?user_code=...).
+    // Kept in a short-lived cookie instead of the emailRedirectTo query string, so the
+    // redirect URL Supabase checks against its allowlist stays exactly /auth/callback.
+    const safe = safeNext(next);
+    if (safe) {
+      const cookieStore = await cookies();
+      cookieStore.set(NEXT_COOKIE, safe, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 600,
+        path: '/',
+      });
+    }
+
     // Build redirect URL from request origin or env vars
     const baseUrl = getBaseUrl(request);
     const redirectTo = `${baseUrl}/auth/callback`;

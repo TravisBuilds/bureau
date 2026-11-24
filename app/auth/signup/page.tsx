@@ -12,28 +12,24 @@ function SignUpForm() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const errorParam = searchParams.get('error');
-    if (errorParam === 'invite-required') {
-      setError("You're signed in, but this email isn't a member of a Bureau workspace yet. Enter an invite code to join.");
-    }
-  }, [searchParams]);
+  const [signInUrl, setSignInUrl] = useState('');
 
   // /auth/callback sends signed-in users with no workspace here (?error=invite-required).
   // Without this they saw the blank sign-up form with no explanation.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('error') === 'invite-required') {
+    if (searchParams.get('error') === 'invite-required') {
       setError(
         "You're signed in, but this email isn't a member of a Bureau workspace yet. " +
         'Enter your invite code below, then open the new magic link in this same browser.'
       );
     }
-  }, []);
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSignInUrl('');
     
     try {
       // Validate invite code
@@ -46,6 +42,10 @@ function SignUpForm() {
       if (!validateResponse.ok) {
         const data = await validateResponse.json();
         setError(data.error || 'Invalid invite code');
+        // Bot-connect code typed into the invite box: offer the sign-in link that keeps it
+        if (data.isDeviceCode && typeof data.signInUrl === 'string' && data.signInUrl.startsWith('/auth/signin')) {
+          setSignInUrl(data.signInUrl);
+        }
         setLoading(false);
         return;
       }
@@ -149,6 +149,11 @@ function SignUpForm() {
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-800">{error}</p>
+              {signInUrl && (
+                <a href={signInUrl} className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline">
+                  Sign in and connect this bot
+                </a>
+              )}
             </div>
           )}
           

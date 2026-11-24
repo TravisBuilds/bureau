@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     );
     
     if (credRows.length === 0) {
-      const origin = request.headers.get('origin') || new URL(request.url).origin;
+      const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
       return new NextResponse(
         JSON.stringify({ error: 'Invalid or revoked token' }),
         { 

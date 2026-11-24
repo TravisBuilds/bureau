@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { query, withUser } from '@/lib/db';
+import { withUser } from '@/lib/db';
 
 /**
  * Slack Events API webhook handler
@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
 
     // 6. Dedupe: INSERT ... ON CONFLICT DO NOTHING before any side effects
     if (eventId) {
+      const { query } = await import('@/lib/db');
       try {
         await query(
           'INSERT INTO bureau.slack_event_ids (event_id) VALUES ($1)',
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    const { query } = await import('@/lib/db');
     const workspaceRows = await query<{ slack_resolve_team: string }>(
       'SELECT bureau.slack_resolve_team($1) as slack_resolve_team',
       [teamId]
@@ -175,20 +177,18 @@ export async function POST(request: NextRequest) {
 
       const clone = cloneRows[0];
 
-      // 10. Record question deterministically
-      // Run with the clone owner's user context for RLS
-      // FIX: Correct argument order for ask_question
-      await withUser(clone.owner_user_id, '', async (client) => {
+      // 10. Record question + read latest heartbeat as the clone owner (RLS context lives on `client`)
+      const latest = await withUser(clone.owner_user_id, '', async (client) => {
         await client.query(
-          `SELECT bureau.ask_question($1, $2, NULL, $3, NULL, $4, $5, 'slack') as ask_question`,
-          [
-            workspaceId,       // p_workspace_id
-            questionText,      // p_question_text
-            `slack-${userId}`, // p_asker_name
-            clone.id,          // p_target_clone_id (UUID, not string)
-            ts                 // p_source_ref
-          ]
+          `SELECT bureau.ask_question($1, $2, NULL, $3, $4, $5, NULL, 'slack')`,
+          [workspaceId, questionText, `slack-${userId}`, userId, clone.id]
         );
+        const hb = await client.query(
+          `SELECT top_priority, blocked FROM bureau.clone_heartbeats
+           WHERE clone_id = $1 ORDER BY date DESC LIMIT 1`,
+          [clone.id]
+        );
+        return hb.rows[0] as { top_priority: string | null; blocked: string[] | null } | undefined;
       });
 
       console.log(`Recorded Slack question for clone ${handle} in workspace ${workspaceId}`);
@@ -196,19 +196,10 @@ export async function POST(request: NextRequest) {
       // 11. Post deterministic answer from latest heartbeat
       if (SLACK_BOT_TOKEN) {
         try {
-          // Get latest heartbeat
-          const heartbeatRows = await query<{ content: any }>(
-            `SELECT content FROM bureau.clone_heartbeats 
-             WHERE clone_id = $1 
-             ORDER BY date DESC 
-             LIMIT 1`,
-            [clone.id]
-          );
-
-          let answer = `I'm ${clone.display_name}. Ask me anything!`;
-          if (heartbeatRows.length > 0 && heartbeatRows[0].content) {
-            const hb = heartbeatRows[0].content;
-            answer = `${hb.status || 'Working'} - ${hb.summary || 'Standing by'}`;
+          let answer = `I'm ${clone.display_name}. I'll pass this to my owner.`;
+          if (latest) {
+            answer = `${clone.display_name} — top priority: ${latest.top_priority || 'n/a'}` +
+              (latest.blocked?.length ? `; blocked on: ${latest.blocked.join(', ')}` : '');
           }
 
           // Post threaded message via Slack API
@@ -241,6 +232,7 @@ export async function POST(request: NextRequest) {
     // If processing failed after event_id insert, delete it so retry can work
     if (eventId) {
       try {
+        const { query } = await import('@/lib/db');
         await query('DELETE FROM bureau.slack_event_ids WHERE event_id = $1', [eventId]);
       } catch (cleanupErr) {
         console.error('Failed to cleanup event_id:', cleanupErr);

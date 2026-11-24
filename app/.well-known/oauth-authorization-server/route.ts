@@ -13,6 +13,7 @@ export async function GET() {
     token_endpoint: `${baseUrl}/api/oauth/token`,
     revocation_endpoint: `${baseUrl}/api/oauth/revoke`,
     device_authorization_endpoint: `${baseUrl}/api/oauth/device`,
+    registration_endpoint: `${baseUrl}/api/oauth/register`,
     response_types_supported: ['code'],
     grant_types_supported: [
       'authorization_code',

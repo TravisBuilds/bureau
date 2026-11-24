@@ -7,9 +7,19 @@ import { startDeviceFlow } from '@/lib/oauth-server';
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.formData();
-    const clientName = body.get('client_name')?.toString() || 'Script';
-    const scope = body.get('scope')?.toString() || 'ingest:write';
+    const contentType = request.headers.get('content-type');
+    let clientName = 'Script';
+    let scope = 'ingest:write';
+    
+    if (contentType?.includes('application/json')) {
+      const body = await request.json();
+      clientName = body.client_name || body.clientName || 'Script';
+      scope = body.scope || 'ingest:write';
+    } else {
+      const body = await request.formData();
+      clientName = body.get('client_name')?.toString() || 'Script';
+      scope = body.get('scope')?.toString() || 'ingest:write';
+    }
     
     const scopes = scope.split(' ').filter(Boolean);
     

@@ -42,26 +42,30 @@ export async function POST(request: NextRequest) {
     
     const token = authHeader.substring(7); // Remove "Bearer "
     
-    // Look up token using SECURITY DEFINER function (bypasses RLS, returns email)
-    const tokenRows = await query<{
+    // Resolve credential (OAuth access token or legacy ingest token)
+    const credRows = await query<{
       workspace_id: string;
       user_id: string;
       user_email: string;
-      token_id: string;
+      token_id: string | null;
+      agent_link_id: string | null;
+      allowed_stream_ids: string[] | null;
+      allow_create_streams: boolean;
+      scopes: string[];
     }>(
-      `SELECT workspace_id, user_id, user_email, token_id
-       FROM bureau.resolve_ingest_token($1)`,
+      `SELECT workspace_id, user_id, user_email, token_id, agent_link_id, 
+              allowed_stream_ids, allow_create_streams, scopes
+       FROM bureau.resolve_credential($1)`,
       [token]
     );
     
-    // RETURNS TABLE means empty set on miss (not NULL row)
-    if (tokenRows.length === 0) {
+    if (credRows.length === 0) {
       return NextResponse.json({ 
         error: 'Invalid or revoked token' 
       }, { status: 401 });
     }
     
-    const tokenInfo = tokenRows[0];
+    const tokenInfo = credRows[0];
     const userEmail = tokenInfo.user_email;
     
     // 2. Parse payload (catch malformed JSON)

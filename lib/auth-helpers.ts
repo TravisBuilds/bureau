@@ -10,6 +10,7 @@ export interface AuthUser {
   id: string;
   email: string;
   workspaceId: string | null;
+  role: 'owner' | 'admin' | 'member' | null;
 }
 
 /**

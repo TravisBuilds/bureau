@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { DEFAULT_SCOPES } from '@/lib/oauth-scopes';
+import { DEFAULT_SCOPES, scopesForRole } from '@/lib/oauth-scopes';
 import { defaultAgentLabel } from '@/lib/display-name';
 
 interface Client {
@@ -25,7 +25,7 @@ const SCOPE_TEXT: Record<string, string> = {
   'clone:write': 'Keep your Digital Clone up to date (daily check-in)',
   'questions:read': 'See questions teammates ask you',
   'questions:write': 'Answer or pass on those questions',
-  'team:read': 'See your team\u2019s check-ins',
+  'team:read': 'See your team\u2019s check-ins and ask teammates\u2019 AIs questions (owners and admins only)',
 };
 
 /** RFC 9207 issuer, sent back with every authorization response. */
@@ -37,6 +37,7 @@ function OAuthAuthorizeContent() {
   const searchParams = useSearchParams();
 
   const [client, setClient] = useState<Client | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +88,7 @@ function OAuthAuthorizeContent() {
         }
         const me = meRes.ok ? await meRes.json() : {};
         setAgentLabel(defaultAgentLabel(me.first_name || '', clientData.client_name));
+        setRole(me.role ?? null);
       } catch {
         setError('Failed to load. Refresh the page to try again.');
       } finally {
@@ -181,7 +183,8 @@ function OAuthAuthorizeContent() {
         )}
 
         <ul className="mb-6 space-y-1 text-sm text-gray-700 list-disc pl-5">
-          {scopes.map(s => <li key={s}>{SCOPE_TEXT[s] || s}</li>)}
+          {/* Same rule the server applies on approve: owners/admins get team:read, members never do */}
+          {scopesForRole(scopes, role).map(s => <li key={s}>{SCOPE_TEXT[s] || s}</li>)}
         </ul>
 
         <button

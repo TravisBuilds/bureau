@@ -1,6 +1,7 @@
 'use client';
 
-import { Building2, Shield, AlertCircle, Plus, Key, Clock } from 'lucide-react';
+import { Building2, Shield, AlertCircle, Plus, Key, Clock, Users, MessageCircleQuestion } from 'lucide-react';
+import AskTeamBox from '@/components/AskTeamBox';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow, format } from 'date-fns';
 
@@ -73,6 +74,20 @@ export default function TopFloorPageContent({
                 Decisions
               </button>
               <button
+                onClick={() => router.push('/team-health')}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                <Users className="w-4 h-4" />
+                Team
+              </button>
+              <button
+                onClick={() => router.push('/questions')}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                <MessageCircleQuestion className="w-4 h-4" />
+                Questions
+              </button>
+              <button
                 onClick={() => router.push('/connections')}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
               >
@@ -85,6 +100,8 @@ export default function TopFloorPageContent({
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
+        <AskTeamBox />
+
         {/* Empty State for New Users */}
         {streams.length === 0 && (
           <div className="text-center py-16">

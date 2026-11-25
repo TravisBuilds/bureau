@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import AskTeamBox from '@/components/AskTeamBox';
 
 interface HeartbeatData {
   id: string;
@@ -19,9 +20,11 @@ interface HeartbeatData {
 }
 
 interface ProfileData {
-  responsibilities: string;
-  active_work: string;
-  availability: string;
+  responsibilities?: string | null;
+  active_work?: string | null;
+  decisions_pending?: string | null;
+  recent_output?: string | null;
+  availability?: string | null;
 }
 
 interface CloneHealth {
@@ -91,12 +94,8 @@ export default function TeamHealthPage() {
       what: h.what
     })));
 
-  const timezones = clones
-    .map(c => {
-      const tz = (c as any).timezone;
-      return tz ? { clone: c.display_name, timezone: tz } : null;
-    })
-    .filter(Boolean);
+  // Fresh clones get a card even before their first heartbeat (they'd otherwise vanish)
+  const freshClones = clones.filter(c => !c.is_stale);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -116,6 +115,8 @@ export default function TeamHealthPage() {
             <p className="text-sm text-red-800">{error}</p>
           </div>
         )}
+
+        <AskTeamBox />
 
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -189,7 +190,7 @@ export default function TeamHealthPage() {
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-4">Clone Status</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {activeClones.map(clone => (
+            {freshClones.map(clone => (
               <div key={clone.clone_id} className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div>
@@ -243,6 +244,17 @@ export default function TeamHealthPage() {
 
                 {!clone.latest_heartbeat && (
                   <p className="text-sm text-gray-500">No recent heartbeat</p>
+                )}
+
+                {clone.profile && (clone.profile.responsibilities || clone.profile.availability) && (
+                  <div className="mt-4 pt-3 border-t border-gray-100 space-y-1 text-sm">
+                    {clone.profile.responsibilities && (
+                      <p><span className="font-medium text-gray-700">Responsible for:</span> {clone.profile.responsibilities}</p>
+                    )}
+                    {clone.profile.availability && (
+                      <p><span className="font-medium text-gray-700">Availability:</span> {clone.profile.availability}</p>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

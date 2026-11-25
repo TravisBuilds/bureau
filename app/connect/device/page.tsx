@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { defaultAgentLabel } from '@/lib/display-name';
+import { scopesForRole, SCOPE_DESCRIPTIONS } from '@/lib/oauth-scopes';
 
 interface Stream {
   id: string;
@@ -21,6 +22,7 @@ function DeviceFlowContent() {
   const [selectedStreams, setSelectedStreams] = useState<string[]>([]);
   const [allowCreate, setAllowCreate] = useState(true);
   const [agentLabel, setAgentLabel] = useState('');
+  const [role, setRole] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(!!userCodeParam);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +58,7 @@ function DeviceFlowContent() {
       }
       const me = meRes.ok ? await meRes.json() : {};
       setAgentLabel(defaultAgentLabel(me.first_name || '', data.clientName));
+      setRole(me.role ?? null);
       setStep('confirm');
     } catch {
       setError('Couldn\u2019t check that code. Try again.');
@@ -147,6 +150,10 @@ function DeviceFlowContent() {
           <p className="text-sm text-gray-600 mb-6">
             It will appear on your team page as <strong>{agentLabel.trim() || deviceInfo.clientName}</strong>.
           </p>
+          {/* Same rule pollDeviceCode applies when it mints: owners/admins get team:read, members never do */}
+          <ul className="mb-6 space-y-1 text-sm text-gray-700 list-disc pl-5">
+            {scopesForRole(deviceInfo.scopes || [], role).map(s => <li key={s}>{SCOPE_DESCRIPTIONS[s] || s}</li>)}
+          </ul>
           <button
             onClick={handleApprove}
             disabled={loading}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
 import { query, withUser } from '@/lib/db';
 
-import { ALLOWED_SCOPES, resolveScopes } from '@/lib/oauth-scopes';
+import { ALLOWED_SCOPES, resolveScopes, scopesForRole } from '@/lib/oauth-scopes';
 import { storeAuthCode, validateRedirectUri } from '@/lib/oauth-server';
 
 /**
@@ -44,7 +44,8 @@ export async function POST(request: NextRequest) {
     if (scopes !== undefined && scopes !== null && !Array.isArray(scopes) && typeof scopes !== 'string') {
       return NextResponse.json({ error: 'invalid_scope', error_description: 'scopes must be an array' }, { status: 400 });
     }
-    const requestedScopes = resolveScopes(scopes);
+    // Role decides team:read: owners/admins get it with the normal set, members never do.
+    const requestedScopes = scopesForRole(resolveScopes(scopes), user.role);
     if (typeof agent_label !== 'string' || !agent_label.trim() || agent_label.length > 100) {
       return NextResponse.json({ error: 'agent_label must be 1-100 characters' }, { status: 400 });
     }

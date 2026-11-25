@@ -9,6 +9,7 @@
 import crypto from 'crypto';
 import { query, withUser } from './db';
 import { ensureCloneForLink, cloneVendorFor } from './auto-clone';
+import { scopesForRole } from './oauth-scopes';
 
 // Token generation
 export function generateToken(prefix: string): { token: string; hash: string; tokenPrefix: string } {
@@ -180,7 +181,7 @@ export async function exchangeCode(
         workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
       ) VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (grant_id, agent_label)
-      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active', last_used_at = NOW()
+      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, scopes = EXCLUDED.scopes, status = 'active', last_used_at = NOW()
       RETURNING id`,
       [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
     );
@@ -394,13 +395,21 @@ export async function pollDeviceCode(
   
   // Create grant + agent link + clone as the approving user so RLS (auth.uid() + user_workspaces()) passes
   const { grantId, agentLinkId } = await withUser(device.user_id, '', async (client) => {
+    // Device codes are started before anyone signs in, so the approver's role is applied here,
+    // at mint time, in app code (bureau.approve_device_code is unchanged; no migration needed).
+    const roleRows = await client.query(
+      `SELECT role::text AS role FROM bureau.workspace_members
+       WHERE workspace_id = $1 AND user_id = $2 AND removed_at IS NULL LIMIT 1`,
+      [device.workspace_id, device.user_id]
+    );
+    const scopes = scopesForRole(device.scopes || [], roleRows.rows[0]?.role ?? null);
     const grantRows = await client.query(
       `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
        VALUES ($1, $2, 'script-device', 'script', $3)
        ON CONFLICT (workspace_id, user_id, client_id)
        DO UPDATE SET last_seen_at = NOW(), status = 'active'
        RETURNING id`,
-      [device.workspace_id, device.user_id, device.scopes]
+      [device.workspace_id, device.user_id, scopes]
     );
     const id: string = grantRows.rows[0].id;
     const linkRows = await client.query(
@@ -408,9 +417,9 @@ export async function pollDeviceCode(
         workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
       ) VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (grant_id, agent_label)
-      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, status = 'active'
+      DO UPDATE SET stream_ids = $4, allow_create_streams = $5, scopes = EXCLUDED.scopes, status = 'active'
       RETURNING id`,
-      [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
+      [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, scopes]
     );
     const agentLinkId: string = linkRows.rows[0].id;
     

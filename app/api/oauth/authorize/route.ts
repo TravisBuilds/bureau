@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
 import { query, withUser } from '@/lib/db';
 
-// Scope allowlist
-const ALLOWED_SCOPES = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
+import { ALLOWED_SCOPES, resolveScopes } from '@/lib/oauth-scopes';
 import { storeAuthCode, validateRedirectUri } from '@/lib/oauth-server';
 
 /**
@@ -42,7 +41,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate scopes against allowlist
-    const requestedScopes = scopes || [];
+    if (scopes !== undefined && scopes !== null && !Array.isArray(scopes) && typeof scopes !== 'string') {
+      return NextResponse.json({ error: 'invalid_scope', error_description: 'scopes must be an array' }, { status: 400 });
+    }
+    const requestedScopes = resolveScopes(scopes);
+    if (typeof agent_label !== 'string' || !agent_label.trim() || agent_label.length > 100) {
+      return NextResponse.json({ error: 'agent_label must be 1-100 characters' }, { status: 400 });
+    }
     const invalidScopes = requestedScopes.filter((s: string) => !ALLOWED_SCOPES.includes(s));
     if (invalidScopes.length > 0) {
       return NextResponse.json({ 
@@ -100,13 +105,15 @@ export async function POST(request: NextRequest) {
       redirectUri: redirect_uri,
       codeChallenge: code_challenge,
       resource: resource || null,
-      scopes: scopes || ['ingest:write'],
-      agentLabel: agent_label,
+      scopes: requestedScopes,
+      agentLabel: agent_label.trim(),
       streamIds: stream_ids || [],
       allowCreateStreams: allow_create_streams || false
     });
     
-    return NextResponse.json({ code, state });
+    // RFC 9207: the consent page appends iss to the redirect
+    const iss = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
+    return NextResponse.json({ code, state, iss });
     
   } catch (error) {
     if (error instanceof Response) {

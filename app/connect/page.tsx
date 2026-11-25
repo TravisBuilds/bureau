@@ -1,140 +1,226 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function ConnectPage() {
-  const [copiedUrl, setCopiedUrl] = useState(false);
-  
-  const mcpServerUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
-  const mcpUrl = `${mcpServerUrl}/mcp`;
-  
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2000);
+  const router = useRouter();
+  const [newLinks, setNewLinks] = useState<{ id: string; agent_label: string; client_name: string }[]>([]);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  // Poll /api/connections; anything not present on the first fetch is a new connection.
+  useEffect(() => {
+    let baseline: Set<string> | null = null;
+    let stopped = false;
+    const checkConnections = async () => {
+      try {
+        const res = await fetch('/api/connections', { cache: 'no-store' });
+        if (!res.ok || stopped) return;
+        const data = await res.json();
+        const links: { id: string; agent_label: string; client_name: string }[] = [];
+        for (const c of data.connections || []) {
+          for (const l of c.agent_links || []) {
+            links.push({ id: l.id, agent_label: l.agent_label, client_name: c.client_name });
+          }
+        }
+        if (!baseline) {
+          baseline = new Set(links.map(l => l.id));
+          return;
+        }
+        const fresh = links.filter(l => !baseline!.has(l.id));
+        if (fresh.length) setNewLinks(fresh);
+      } catch (err) {
+        console.error('Failed to fetch connections:', err);
+      }
+    };
+
+    checkConnections();
+    const interval = setInterval(checkConnections, 2000);
+    return () => { stopped = true; clearInterval(interval); };
+  }, []);
+
+  const copyToClipboard = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(id);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
   };
-  
+
+  // Same value on server and client (no hydration mismatch)
+  const mcpUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app'}/mcp`;
+
+  const claudeUrl = `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Bureau&connectorUrl=${encodeURIComponent(mcpUrl)}`;
+  const chatgptUrl = 'https://chatgpt.com/plugins';
+  const grokBotMessage = `Add this MCP server and connect me to it: ${mcpUrl}`;
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-2">Connect an Agent</h1>
-        <p className="text-gray-600 mb-8">
-          Connect ChatGPT, Grok Bot, Cursor, or any MCP client to Bureau
-        </p>
-        
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Connect Your Agent</h1>
+          <p className="text-gray-600">
+            Choose your assistant and approve the connection. No codes, tokens, or terminals.
+          </p>
+        </div>
+
+        {/* Success banner */}
+        {newLinks.length > 0 && (
+          <div className="mb-8 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 text-green-800 font-medium">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Connected ✓ {newLinks.map(l => l.agent_label).join(', ')}. You\u2019re done.
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-6 md:grid-cols-2">
-          {/* ChatGPT */}
-          <div className="bg-white rounded-lg shadow-md p-6 border-2 border-transparent hover:border-blue-500 transition">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-white text-2xl font-bold mr-4">
+          {/* Claude */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
                 C
               </div>
-              <div>
-                <h2 className="text-xl font-bold">ChatGPT</h2>
-                <p className="text-sm text-gray-500">Custom MCP Server</p>
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900">Claude</h2>
+                <p className="text-sm text-gray-600">Free, Pro, Team, Enterprise</p>
               </div>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Connect ChatGPT Business/Enterprise/Edu to report costs and metrics into Bureau streams.
+            
+            <p className="text-gray-700 mb-4">
+              Opens the Claude connector dialog prefilled with Bureau.
             </p>
-            <Link 
-              href="/connect/chatgpt"
-              className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition"
+            
+            <a
+              href={claudeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-center"
             >
-              Connect ChatGPT →
-            </Link>
+              Connect Claude
+            </a>
+            
+            <p className="text-xs text-gray-500 mt-3">
+              <strong>Steps:</strong> Click Add → Approve on Bureau → Done.<br />
+              Not signed in? Sign in to Claude, then press the button again.<br />
+              Claude Free allows only one custom connector.
+            </p>
           </div>
-          
-          {/* Grok Bot */}
-          <div className="bg-white rounded-lg shadow-md p-6 border-2 border-transparent hover:border-purple-500 transition">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold mr-4">
+
+          {/* ChatGPT Plus/Pro */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-green-500 rounded-lg flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
                 G
               </div>
-              <div>
-                <h2 className="text-xl font-bold">Grok Bot</h2>
-                <p className="text-sm text-gray-500">Custom MCP Connector</p>
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900">ChatGPT</h2>
+                <p className="text-sm text-gray-600">Business, Enterprise, Pro</p>
               </div>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Add Bureau as a custom connector in Grok Bot to track agent costs and outputs.
+            
+            <p className="text-gray-700 mb-4">
+              Copy the MCP URL and follow the 3-step guide.
             </p>
-            <Link 
-              href="/connect/grokbot"
-              className="block w-full text-center bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md transition"
-            >
-              Connect Grok Bot →
-            </Link>
-          </div>
-          
-          {/* Cursor */}
-          <div className="bg-white rounded-lg shadow-md p-6 border-2 border-transparent hover:border-indigo-500 transition">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold mr-4">
-                ▶
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  void copyToClipboard(mcpUrl, 'chatgpt');
+                  window.open(chatgptUrl, '_blank', 'noopener');
+                }}
+                className="block w-full px-4 py-3 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-center"
+              >
+                {copied === 'chatgpt' ? 'Copied! Opening ChatGPT...' : 'Copy URL & Open ChatGPT'}
+              </button>
+              
+              <div className="bg-gray-50 rounded p-3 text-xs text-gray-700 space-y-2">
+                <p><strong>1.</strong> Click + → Add custom MCP server</p>
+                <p><strong>2.</strong> Paste the URL → OAuth → Create as plugin → Install</p>
+                <p><strong>3.</strong> Approve on Bureau</p>
               </div>
-              <div>
-                <h2 className="text-xl font-bold">Cursor</h2>
-                <p className="text-sm text-gray-500">Cloud Agent MCP</p>
+              <p className="text-xs text-gray-500">
+                On ChatGPT Pro, Bureau can read but can&apos;t post your daily check-in. Plus isn&apos;t officially supported by OpenAI.
+              </p>
+            </div>
+          </div>
+
+          {/* Grok Bot */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                X
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900">Grok Bot</h2>
+                <p className="text-sm text-gray-600">Personal or Cursor Team</p>
               </div>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Connect Cursor Cloud Agents to Bureau for cost tracking and stream management.
+            
+            <p className="text-gray-700 mb-4">
+              Copy one sentence and paste it into your bot.
             </p>
-            <Link 
-              href="/connect/cursor"
-              className="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition"
-            >
-              Connect Cursor →
-            </Link>
-          </div>
-          
-          {/* Other MCP Client */}
-          <div className="bg-white rounded-lg shadow-md p-6 border-2 border-transparent hover:border-gray-500 transition">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold mr-4">
-                ⚡
-              </div>
-              <div>
-                <h2 className="text-xl font-bold">Other MCP Client</h2>
-                <p className="text-sm text-gray-500">Any MCP-compatible app</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Use Bureau with any MCP client that supports OAuth 2.1 with PKCE.
-            </p>
-            <button 
-              onClick={() => copyToClipboard(mcpUrl)}
-              className="w-full text-center bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-md transition"
-            >
-              {copiedUrl ? '✓ Copied!' : 'Copy MCP URL'}
-            </button>
-          </div>
-        </div>
-        
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold mb-2">🔗 Bureau MCP Server URL</h3>
-          <div className="flex items-center space-x-2">
-            <code className="flex-1 bg-white px-3 py-2 rounded border border-gray-300 text-sm">
-              {mcpUrl}
-            </code>
+            
             <button
-              onClick={() => copyToClipboard(mcpUrl)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition"
+              onClick={() => copyToClipboard(grokBotMessage, 'grok')}
+              className="block w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-center mb-3"
             >
-              {copiedUrl ? '✓' : 'Copy'}
+              {copied === 'grok' ? 'Copied!' : 'Copy Instruction'}
             </button>
+            
+            {copied === 'grok' && (
+              <div className="bg-blue-50 rounded p-3 text-sm text-blue-800">
+                Now paste it into Grok Bot, click the connect card, and approve.
+              </div>
+            )}
+          </div>
+
+          {/* Cursor IDE */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 opacity-75">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                ⌘
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900">Cursor IDE</h2>
+                <p className="text-sm text-gray-600">Desktop app</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700 mb-4 text-sm">
+              Deep link coming soon. For now, use Claude or Grok Bot in Cursor.
+            </p>
+          </div>
+
+          {/* Script/Device Flow */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 opacity-75 md:col-span-2">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center text-white font-bold flex-shrink-0">
+                &lt;/&gt;
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900">Scripts & Custom Bots</h2>
+                <p className="text-sm text-gray-600">Device flow with verification link</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700 text-sm">
+              Your script will print a verification link. Click it to approve.
+            </p>
           </div>
         </div>
-        
-        <div className="mt-6">
-          <Link 
-            href="/connections" 
-            className="text-blue-600 hover:underline"
+
+        <div className="mt-8 text-center">
+          <button
+            onClick={() => router.push('/top-floor')}
+            className="text-blue-600 hover:text-blue-700 font-medium"
           >
-            ← View existing connections
-          </Link>
+            Skip for now →
+          </button>
         </div>
       </div>
     </div>

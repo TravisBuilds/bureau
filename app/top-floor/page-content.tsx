@@ -95,18 +95,11 @@ export default function TopFloorPageContent({
             </p>
             <div className="flex gap-4 justify-center">
               <button
-                onClick={() => router.push('/settings/connect-agent')}
+                onClick={() => router.push('/connect')}
                 className="flex items-center gap-2 px-6 py-3 bg-highstreet-purple text-white rounded-lg hover:bg-highstreet-purple/90"
               >
                 <Key className="w-5 h-5" />
-                Get Started
-              </button>
-              <button
-                onClick={() => router.push('/onboarding')}
-                className="flex items-center gap-2 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
-              >
-                <Plus className="w-5 h-5" />
-                Setup Walkthrough
+                Connect your AI
               </button>
             </div>
           </div>

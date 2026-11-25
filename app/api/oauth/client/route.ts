@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { resolveClient } from '@/lib/oauth-cimd';
+import { validateRedirectUri } from '@/lib/oauth-server';
 
 /**
  * GET /api/oauth/client?client_id=...
  * Returns public client info for consent screen
- * Tries CIMD first, falls back to DB
+ * Tries CIMD first, falls back to DB.
+ * With &redirect_uri=..., also returns redirect_uri_allowed so the consent page never
+ * redirects (even on Cancel) to a URI the client did not register.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,8 +20,12 @@ export async function GET(request: NextRequest) {
     
     // Try CIMD resolution first (if client_id is HTTPS URL)
     const cimdClient = await resolveClient(clientId);
+    const redirectUri = request.nextUrl.searchParams.get('redirect_uri');
     if (cimdClient) {
-      return NextResponse.json(cimdClient);
+      return NextResponse.json({
+        ...cimdClient,
+        ...(redirectUri !== null ? { redirect_uri_allowed: validateRedirectUri(redirectUri, cimdClient.redirect_uris || []) } : {}),
+      });
     }
     
     // Fall back to DB lookup (static or DCR clients)
@@ -41,7 +48,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unknown client' }, { status: 404 });
     }
     
-    return NextResponse.json(rows[0]);
+    return NextResponse.json({
+      ...rows[0],
+      ...(redirectUri !== null ? { redirect_uri_allowed: validateRedirectUri(redirectUri, rows[0].redirect_uris) } : {}),
+    });
     
   } catch (error) {
     console.error('OAuth client lookup error:', error);

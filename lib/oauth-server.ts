@@ -8,6 +8,7 @@
 
 import crypto from 'crypto';
 import { query, withUser } from './db';
+import { ensureCloneForLink, cloneVendorFor } from './auto-clone';
 
 // Token generation
 export function generateToken(prefix: string): { token: string; hash: string; tokenPrefix: string } {
@@ -58,17 +59,20 @@ export function verifyPKCE(codeVerifier: string, codeChallenge: string, method: 
 
 // Validate redirect URI (exact match, HTTPS or localhost)
 export function validateRedirectUri(uri: string, allowedUris: string[]): boolean {
-  if (!allowedUris.includes(uri)) {
+  if (typeof uri !== 'string' || !allowedUris.includes(uri)) {
     return false;
   }
   
   try {
     const url = new URL(uri);
-    // Must be HTTPS or localhost
+    // HTTPS, http loopback (RFC 8252 §7.3), or Cursor's private-use callback (also used by Grok Bot)
     if (url.protocol === 'https:') {
       return true;
     }
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    if (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')) {
+      return true;
+    }
+    if (url.protocol === 'cursor:' && uri.startsWith('cursor://anysphere.cursor-mcp/')) {
       return true;
     }
     return false;
@@ -157,7 +161,7 @@ export async function exchangeCode(
     throw new Error('INVALID_PKCE');
   }
   
-  // Grant, agent link and hidden ingest token are written as the approving user,
+  // Grant, agent link, hidden ingest token, and clone are written as the approving user,
   // so the oauth_grants / agent_links RLS policies (auth.uid() + user_workspaces()) pass.
   const { grantId, agentLinkId } = await withUser(codeData.user_id, '', async (client) => {
     const grantRows = await client.query(
@@ -165,10 +169,12 @@ export async function exchangeCode(
        VALUES ($1, $2, $3, (SELECT vendor FROM bureau.oauth_clients WHERE client_id = $3), $4, $5)
        ON CONFLICT (workspace_id, user_id, client_id)
        DO UPDATE SET last_seen_at = NOW(), status = 'active'
-       RETURNING id`,
+       RETURNING id, vendor`,
       [codeData.workspace_id, codeData.user_id, clientId, codeData.scopes, resource]
     );
     const grantId: string = grantRows.rows[0].id;
+    const vendor: string = grantRows.rows[0].vendor || 'other';
+    
     const agentLinkRows = await client.query(
       `INSERT INTO bureau.agent_links (
         workspace_id, grant_id, agent_label, stream_ids, allow_create_streams, scopes
@@ -179,6 +185,7 @@ export async function exchangeCode(
       [codeData.workspace_id, grantId, codeData.agent_label, codeData.stream_ids, codeData.allow_create_streams, codeData.scopes]
     );
     const agentLinkId: string = agentLinkRows.rows[0].id;
+    
     const { hash: hiddenHash, tokenPrefix: hiddenPrefix } = generateToken('bureau_hidden_');
     await client.query(
       `INSERT INTO bureau.ingest_tokens (
@@ -187,6 +194,13 @@ export async function exchangeCode(
       ON CONFLICT DO NOTHING`,
       [codeData.workspace_id, `Agent Link: ${codeData.agent_label}`, hiddenHash, hiddenPrefix, agentLinkId]
     );
+    
+    // Auto-create the clone for this agent link (fail-soft; never blocks token issuance)
+    await ensureCloneForLink(client, {
+      workspaceId: codeData.workspace_id, userId: codeData.user_id, agentLinkId,
+      label: codeData.agent_label, vendor: cloneVendorFor(vendor, codeData.redirect_uri),
+    });
+    
     return { grantId, agentLinkId };
   });
 
@@ -378,7 +392,7 @@ export async function pollDeviceCode(
     [deviceCodeHash]
   );
   
-  // Create grant + agent link as the approving user so RLS (auth.uid() + user_workspaces()) passes
+  // Create grant + agent link + clone as the approving user so RLS (auth.uid() + user_workspaces()) passes
   const { grantId, agentLinkId } = await withUser(device.user_id, '', async (client) => {
     const grantRows = await client.query(
       `INSERT INTO bureau.oauth_grants (workspace_id, user_id, client_id, vendor, scopes)
@@ -398,7 +412,15 @@ export async function pollDeviceCode(
       RETURNING id`,
       [device.workspace_id, id, device.agent_label, device.stream_ids || [], device.allow_create_streams, device.scopes]
     );
-    return { grantId: id, agentLinkId: linkRows.rows[0].id as string };
+    const agentLinkId: string = linkRows.rows[0].id;
+    
+    // Auto-create clone for device flow (fail-soft; never blocks token issuance)
+    await ensureCloneForLink(client, {
+      workspaceId: device.workspace_id!, userId: device.user_id!, agentLinkId,
+      label: device.agent_label || device.client_name || 'Script Bot', vendor: 'custom',
+    });
+    
+    return { grantId: id, agentLinkId };
   });
 
   // Mint tokens

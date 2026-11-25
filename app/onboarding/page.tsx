@@ -1,33 +1,22 @@
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
-import OnboardingContent from './page-content';
+'use client';
 
-export default async function OnboardingPage() {
-  // Get authenticated user
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-  if (!supabaseUrl || !supabaseKey) {
-    redirect('/auth/signin');
-  }
-
-  const cookieStore = await cookies();
-  const supabase = createServerClient(supabaseUrl, supabaseKey, {
-    cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
-      },
-      set() {},
-      remove() {},
-    },
-  });
-
-  const { data: { user } } = await supabase.auth.getUser();
+// Redirect to /connect
+export default function OnboardingRedirect() {
+  const router = useRouter();
   
-  if (!user) {
-    redirect('/auth/signin');
-  }
-
-  return <OnboardingContent userEmail={user.email || ''} />;
+  useEffect(() => {
+    router.replace('/connect');
+  }, [router]);
+  
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-gray-600">Redirecting to connect...</p>
+      </div>
+    </div>
+  );
 }

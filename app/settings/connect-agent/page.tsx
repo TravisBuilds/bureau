@@ -6,7 +6,7 @@ import { formatFullDateTime } from '@/lib/timezone-utils';
 interface Token {
   id: string;
   name: string;
-  token: string;
+  token_prefix: string | null;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
@@ -57,11 +57,15 @@ export default function ConnectAgentPage() {
   }
   
   const latestToken = tokens.find(t => t.revoked_at === null);
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
   
   return (
     <div className="min-h-screen bg-white p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Connect Your Agent</h1>
+        <p className="mb-4 p-3 rounded-lg bg-purple-50 text-purple-900 text-sm">
+          Using Claude, ChatGPT or Grok Bot? <a href="/connect" className="underline font-medium">Connect in one click</a> instead. This page is for developers.
+        </p>
         <p className="text-slate-600 mb-8">
           Use this token to push costs, findings, and updates from your agents to Bureau.
         </p>
@@ -92,12 +96,14 @@ export default function ConnectAgentPage() {
               <div className="mb-8">
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-sm font-medium text-slate-700">Your Token</label>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(justCreatedToken || latestToken.token)}
-                    className="text-sm text-purple-600 hover:text-purple-700"
-                  >
-                    Copy
-                  </button>
+                  {justCreatedToken && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(justCreatedToken)}
+                      className="text-sm text-purple-600 hover:text-purple-700"
+                    >
+                      Copy
+                    </button>
+                  )}
                 </div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg font-mono text-sm break-all">
                   {justCreatedToken ? (
@@ -106,7 +112,7 @@ export default function ConnectAgentPage() {
                       {justCreatedToken}
                     </div>
                   ) : (
-                    `bureau_••••${latestToken.token.slice(-4)}`
+                    `${latestToken.token_prefix || 'bureau_'}••••`
                   )}
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
@@ -124,7 +130,7 @@ export default function ConnectAgentPage() {
             <div className="mb-8">
               <h3 className="text-lg font-semibold text-slate-900 mb-3">Usage Example</h3>
               <div className="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto">
-                <pre className="text-sm">{`curl -X POST http://localhost:3000/api/ingest \\
+                <pre className="text-sm">{`curl -X POST ${appOrigin}/api/ingest \\
   -H "Authorization: Bearer $BUREAU_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{

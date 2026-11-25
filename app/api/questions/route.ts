@@ -10,8 +10,13 @@ import { latestCheckin } from '@/lib/clone-status';
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
-    
-    if (!user.workspaceId) {
+    let workspaceId = user.workspaceId;
+    if (!workspaceId) {
+      const { ensureDefaultWorkspaceMembership } = await import('@/lib/post-login');
+      workspaceId = await ensureDefaultWorkspaceMembership(user.id, user.email);
+    }
+
+    if (!workspaceId) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
 
@@ -47,7 +52,7 @@ export async function GET(request: NextRequest) {
        WHERE q.workspace_id = $1
        ORDER BY q.asked_at DESC
        LIMIT 100`,
-        [user.workspaceId]
+        [workspaceId]
       );
       return result.rows;
     });
@@ -72,11 +77,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
+    let workspaceId = user.workspaceId;
+    if (!workspaceId) {
+      const { ensureDefaultWorkspaceMembership } = await import('@/lib/post-login');
+      workspaceId = await ensureDefaultWorkspaceMembership(user.id, user.email);
+    }
 
-    if (!user.workspaceId) {
+    if (!workspaceId) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
-    const workspaceId = user.workspaceId;
 
     const body = await request.json().catch(() => ({}));
     const target_clone_id = typeof body.target_clone_id === 'string' ? body.target_clone_id.trim() : '';

@@ -25,7 +25,7 @@ const SCOPE_TEXT: Record<string, string> = {
   'clone:write': 'Keep your Digital Clone up to date (daily check-in)',
   'questions:read': 'See questions teammates ask you',
   'questions:write': 'Answer or pass on those questions',
-  'team:read': 'See your team\u2019s check-ins and ask teammates\u2019 AIs questions (owners and admins only)',
+  'team:read': 'See your team\u2019s check-ins and ask teammates\u2019 AIs questions',
 };
 
 /** RFC 9207 issuer, sent back with every authorization response. */
@@ -183,7 +183,7 @@ function OAuthAuthorizeContent() {
         )}
 
         <ul className="mb-6 space-y-1 text-sm text-gray-700 list-disc pl-5">
-          {/* Same rule the server applies on approve: owners/admins get team:read, members never do */}
+          {/* Same rule the server applies on approve */}
           {scopesForRole(scopes, role).map(s => <li key={s}>{SCOPE_TEXT[s] || s}</li>)}
         </ul>
 

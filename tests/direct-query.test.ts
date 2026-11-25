@@ -165,19 +165,22 @@ afterAll(async () => {
 });
 
 describe('scopesForRole (pure)', () => {
-  it('members never get team:read; owners/admins get it with the normal set; narrow requests respected', async () => {
-    const { scopesForRole, resolveScopes, isLeaderRole } = await import('../lib/oauth-scopes');
-    expect(scopesForRole(DEFAULT, 'member')).toEqual(DEFAULT);
-    expect(scopesForRole([...DEFAULT, 'team:read'], 'member')).toEqual(DEFAULT);
+  it('all active members (owner/admin/member) get team:read with the normal set; narrow requests and null role respected', async () => {
+    const { scopesForRole, resolveScopes, isLeaderRole, canReadTeam, FULL_TEAM_TRANSPARENCY } = await import('../lib/oauth-scopes');
+    expect(FULL_TEAM_TRANSPARENCY).toBe(true);
+    expect(scopesForRole(DEFAULT, 'member')).toEqual([...DEFAULT, 'team:read']);
+    expect(scopesForRole([...DEFAULT, 'team:read'], 'member')).toEqual([...DEFAULT, 'team:read']);
+    expect(scopesForRole(['ingest:write'], 'member')).toEqual(['ingest:write']);
     expect(scopesForRole(['team:read'], null)).toEqual([]);
     expect(scopesForRole(DEFAULT, 'owner')).toEqual([...DEFAULT, 'team:read']);
     expect(scopesForRole(DEFAULT, 'admin')).toEqual([...DEFAULT, 'team:read']);
     expect(scopesForRole([...DEFAULT, 'team:read'], 'owner')).toEqual([...DEFAULT, 'team:read']);
     expect(scopesForRole(['ingest:write'], 'owner')).toEqual(['ingest:write']);
     expect(scopesForRole(['team:read', 'ingest:write'], 'admin')).toEqual(['ingest:write', 'team:read']);
-    expect(scopesForRole(resolveScopes(undefined), 'owner')).toContain('team:read');
+    expect(scopesForRole(resolveScopes(undefined), 'member')).toContain('team:read');
     expect(scopesForRole(['bogus', ...DEFAULT], 'member')).toContain('bogus'); // still rejected by invalid_scope
     expect([isLeaderRole('owner'), isLeaderRole('admin'), isLeaderRole('member'), isLeaderRole(null)]).toEqual([true, true, false, false]);
+    expect([canReadTeam('owner'), canReadTeam('admin'), canReadTeam('member'), canReadTeam(null)]).toEqual([true, true, true, false]);
   });
 });
 
@@ -206,10 +209,16 @@ describe('consent (POST /api/oauth/authorize) applies the role', () => {
     expect(await linkScopes(at)).toContain('team:read');
   });
 
-  it('member asking for everything (incl. team:read) does not get it, and team_health is refused', async () => {
+  it('member connecting with default/all scopes gets team:read and team_health works; narrow request omits it', async () => {
     const at = await consentConnect(jack, await createClient(), [...DEFAULT, 'team:read'], 'Jack Cursor');
-    expect(await linkScopes(at)).toEqual(DEFAULT);
-    expect((await mcp(at, 'bureau_team_health')).body.error.message).toBe('Missing required scope: team:read');
+    expect(await linkScopes(at)).toEqual([...DEFAULT, 'team:read']);
+    const th = await mcp(at, 'bureau_team_health');
+    expect(th.body.error).toBeUndefined();
+    expect(th.data.map((r: any) => r.handle)).toContain('jill-grok');
+
+    const narrow = await consentConnect(jack, await createClient(), ['ingest:write'], 'Jack Narrow');
+    expect(await linkScopes(narrow)).toEqual(['ingest:write']);
+    expect((await mcp(narrow, 'bureau_team_health')).body.error.message).toBe('Missing required scope: team:read');
   });
 
   it('still rejects unknown scopes', async () => {
@@ -238,7 +247,7 @@ describe('consent (POST /api/oauth/authorize) applies the role', () => {
 });
 
 describe('device flow applies the role at mint time (no migration)', () => {
-  it('owner and admin get team:read; member does not; narrow script scope kept', async () => {
+  it('owner, admin, and member get team:read; narrow script scope kept', async () => {
     const o = await deviceConnect(W1.owner, undefined, 'travis-cli');
     expect(await linkScopes(o)).toEqual([...DEFAULT, 'team:read']);
     expect((await mcp(o, 'bureau_whoami')).data.scopes).toContain('team:read');
@@ -246,11 +255,12 @@ describe('device flow applies the role at mint time (no migration)', () => {
 
     expect(await linkScopes(await deviceConnect(ada, undefined, 'ada-cli'))).toContain('team:read');
 
-    const m = await deviceConnect(jack, `${DEFAULT.join(' ')} team:read`, 'jack-cli');
-    expect(await linkScopes(m)).toEqual(DEFAULT);
-    expect((await mcp(m, 'bureau_team_health')).body.error.message).toBe('Missing required scope: team:read');
+    const m = await deviceConnect(jack, undefined, 'jack-cli');
+    expect(await linkScopes(m)).toEqual([...DEFAULT, 'team:read']);
+    expect((await mcp(m, 'bureau_team_health')).body.error).toBeUndefined();
 
     expect(await linkScopes(await deviceConnect(W1.owner, 'ingest:write', 'travis-ingest-only'))).toEqual(['ingest:write']);
+    expect(await linkScopes(await deviceConnect(jack, 'ingest:write', 'jack-ingest-only'))).toEqual(['ingest:write']);
   });
 
   it('device_codes still store the requested set (role is unknown until approval)', async () => {
@@ -377,23 +387,31 @@ describe('MCP bureau_ask_question', () => {
     expect(th.data.status).toBe('not_found');
   });
 
-  it('members are refused even with a team:read token; missing scope and bad args are errors', async () => {
+  it('members with a team:read token can read team & ask within own workspace (cross-workspace still isolated); missing scope & bad args error', async () => {
     const before = await questionCount(jillGrok);
     const r = await mcp(jackTokAll, 'bureau_ask_question', { who: 'jill', question_text: 'x' });
-    expect(r.body.error.message).toBe('team:read is only for workspace owners and admins');
-    expect((await mcp(jackTokAll, 'bureau_team_health')).body.error.message).toBe('team:read is only for workspace owners and admins');
-    expect((await mcp(jackTokAll, 'bureau_get_questions', { who: 'jill' })).body.error.message).toBe('team:read is only for workspace owners and admins');
+    expect(r.body.error).toBeUndefined();
+    expect(r.data.status).toBe('asked');
+    expect(await questionCount(jillGrok)).toBe(before + 1);
+    const th = await mcp(jackTokAll, 'bureau_team_health');
+    expect(th.body.error).toBeUndefined();
+    expect(th.data.map((row: any) => row.clone_id)).not.toContain(otherJackClone);
+    expect((await mcp(jackTokAll, 'bureau_get_questions', { who: 'jill' })).body.error).toBeUndefined();
+    expect((await mcp(jackTokAll, 'bureau_ask_question', { who: jackOther.email, question_text: 'leak?' })).data.status).toBe('not_found');
+
     expect((await mcp(jackTokDefault, 'bureau_ask_question', { who: 'jill', question_text: 'x' })).body.error.message).toBe('Missing required scope: team:read');
-    expect(await questionCount(jillGrok)).toBe(before);
     expect((await mcp(ownerTok, 'bureau_ask_question', { who: 'jill' })).body.error.code).toBe(-32602);
     expect((await mcp(ownerTok, 'bureau_ask_question', { who: 'jill', question_text: 'x'.repeat(2001) })).body.error.code).toBe(-32602);
   });
 
-  it('a demoted admin loses team access immediately, without reconnecting', async () => {
+  it('a demoted admin retains team access as active member, while a removed member loses access immediately', async () => {
     expect((await mcp(adaTok, 'bureau_team_health')).body.error).toBeUndefined();
     await q(`UPDATE bureau.workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2`, [W1.id, ada.userId]);
-    expect((await mcp(adaTok, 'bureau_team_health')).body.error.message).toBe('team:read is only for workspace owners and admins');
-    await q(`UPDATE bureau.workspace_members SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, [W1.id, ada.userId]);
+    expect((await mcp(adaTok, 'bureau_team_health')).body.error).toBeUndefined();
+    await q(`UPDATE bureau.workspace_members SET removed_at = NOW() WHERE workspace_id = $1 AND user_id = $2`, [W1.id, ada.userId]);
+    const removedRes = await mcp(adaTok, 'bureau_team_health');
+    expect(removedRes.status).toBe(401);
+    await q(`UPDATE bureau.workspace_members SET role = 'admin', removed_at = NULL WHERE workspace_id = $1 AND user_id = $2`, [W1.id, ada.userId]);
   });
 });
 

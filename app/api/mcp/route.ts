@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, withUser } from '@/lib/db';
 import { lookupClone, formatCandidates, type LookupResponse } from '@/lib/clone-lookup';
 import { latestCheckin } from '@/lib/clone-status';
-import { isLeaderRole } from '@/lib/oauth-scopes';
+import { canReadTeam, FULL_TEAM_TRANSPARENCY } from '@/lib/oauth-scopes';
 
 /**
  * Bureau MCP Server (Streamable HTTP transport)
@@ -12,7 +12,7 @@ import { isLeaderRole } from '@/lib/oauth-scopes';
  * - bureau_report_cost: Report cost/metric into allowed streams
  * - bureau_list_streams: List streams this agent can access
  * - bureau_whoami: Get agent link info
- * - bureau_team_health / bureau_ask_question (team:read, owners/admins): read the team, ask a teammate's clone
+ * - bureau_team_health / bureau_ask_question (team:read): read the team, ask a teammate's clone
  */
 
 interface MCPRequest {
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     const cred = credRows[0];
 
     // team:read tools: the scope must be on the token AND the token owner must still be an
-    // owner/admin right now (a demoted leader loses team access without reconnecting).
+    // active member allowed by canReadTeam (all active members under FULL_TEAM_TRANSPARENCY).
     const leaderDenied = async (): Promise<string | null> => {
       if (!cred.scopes.includes('team:read')) return 'Missing required scope: team:read';
       const roleRows = await withUser(cred.user_id, cred.user_email, async (client) =>
@@ -95,7 +95,10 @@ export async function POST(request: NextRequest) {
           [cred.workspace_id, cred.user_id]
         )).rows as Array<{ role: string }>
       );
-      return isLeaderRole(roleRows[0]?.role) ? null : 'team:read is only for workspace owners and admins';
+      if (canReadTeam(roleRows[0]?.role)) return null;
+      return FULL_TEAM_TRANSPARENCY
+        ? 'team:read requires active workspace membership'
+        : 'team:read is only for workspace owners and admins';
     };
     const toolText = (rpcId: any, data: any) => NextResponse.json({
       jsonrpc: '2.0', id: rpcId, result: { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] },
@@ -271,7 +274,7 @@ export async function POST(request: NextRequest) {
             {
               name: 'bureau_team_health',
               annotations: { readOnlyHint: true },
-              description: "Owners/admins: see what your team is working on. Returns every teammate's AI with their latest daily check-in (top priority, active work, blockers), profile and whether it is stale. Pass who (a name, handle or email, e.g. \"jack\") to get just one person. Use this first for questions like \"what is Jack working on?\"",
+              description: "See what your team is working on. Returns every teammate's AI with their latest daily check-in (top priority, active work, blockers), profile and whether it is stale. Pass who (a name, handle or email, e.g. \"jack\") to get just one person. Use this first for questions like \"what is Jack working on?\"",
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -282,12 +285,12 @@ export async function POST(request: NextRequest) {
             {
               name: 'bureau_get_questions',
               annotations: { readOnlyHint: true },
-              description: 'Get questions asked of this clone (to answer them). Owners/admins can pass who to see the questions asked of a teammate, with their answers.',
+              description: 'Get questions asked of this clone (to answer them). Pass who to see the questions asked of a teammate, with their answers.',
               inputSchema: {
                 type: 'object',
                 properties: {
                   clone_id: { type: 'string', description: 'Clone UUID (optional, resolves from agent link)' },
-                  who: { type: 'string', description: 'Owners/admins: a teammate name, handle or email; returns questions asked of them, including answers' },
+                  who: { type: 'string', description: 'Optional: a teammate name, handle or email; returns questions asked of them, including answers' },
                   status: { type: 'string', enum: ['open', 'answered', 'escalated', 'closed'], description: 'Filter by status' }
                 },
                 required: []
@@ -295,7 +298,7 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_ask_question',
-              description: "Owners/admins: ask a teammate's AI a question (e.g. who=\"jack\", question_text=\"Is the release on track?\"). Returns their latest check-in right away as a preview; their AI answers the question the next time it checks in. Read the answer later with bureau_get_questions and the same who.",
+              description: "Ask a teammate's AI a question (e.g. who=\"jack\", question_text=\"Is the release on track?\"). Returns their latest check-in right away as a preview; their AI answers the question the next time it checks in. Read the answer later with bureau_get_questions and the same who.",
               inputSchema: {
                 type: 'object',
                 properties: {

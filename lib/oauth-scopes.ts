@@ -4,7 +4,15 @@ export const ALLOWED_SCOPES: string[] = ['ingest:write', 'clone:write', 'questio
 /** What an employee's bot gets when the client asks for nothing (team:read is opt-in). */
 export const DEFAULT_SCOPES: string[] = ['ingest:write', 'clone:write', 'questions:read', 'questions:write'];
 
-/** Read the whole team's check-ins and ask any teammate's clone a question. Owners/admins only. */
+/**
+ * Full team transparency: when true, every active workspace member (including regular
+ * 'member' users, not just owners/admins) receives team:read on default connects and
+ * passes the per-call MCP team-read check. Cross-workspace isolation and removed-member
+ * rejection still apply.
+ */
+export const FULL_TEAM_TRANSPARENCY = true;
+
+/** Read the whole team's check-ins and ask any teammate's clone a question. */
 export const LEADER_SCOPE = 'team:read';
 
 /** The full set an owner/admin's own AI gets by default. */
@@ -33,17 +41,23 @@ export function resolveScopes(input: string | string[] | null | undefined): stri
 
 export const isLeaderRole = (role: string | null | undefined): boolean => role === 'owner' || role === 'admin';
 
+export const canReadTeam = (role: string | null | undefined): boolean =>
+  FULL_TEAM_TRANSPARENCY
+    ? role === 'owner' || role === 'admin' || role === 'member'
+    : isLeaderRole(role);
+
 /**
  * Apply the approving user's workspace role to a normalized scope list, at grant time.
- * - member / no role: team:read is always removed, even if the client asked for it.
- * - owner / admin: team:read is added when the request covers the full employee set
- *   (i.e. a normal "connect my AI" request, or a client that asks for everything).
- *   Narrow script requests (e.g. just ingest:write) are left as asked.
+ * - no active role: team:read is always removed, even if the client asked for it.
+ * - active role allowed by canReadTeam (all active members under FULL_TEAM_TRANSPARENCY,
+ *   or owner/admin otherwise): team:read is added when the request covers the full employee
+ *   set (or explicitly requests team:read). Narrow script requests (e.g. just ingest:write)
+ *   are left as asked.
  * Unknown scopes pass through untouched so the caller's invalid_scope check still fires.
  */
 export function scopesForRole(scopes: string[], role: string | null | undefined): string[] {
   const base = scopes.filter(s => s !== LEADER_SCOPE);
-  if (!isLeaderRole(role)) return base;
+  if (!canReadTeam(role)) return base;
   const coversDefault = DEFAULT_SCOPES.every(s => scopes.includes(s));
   return coversDefault || scopes.includes(LEADER_SCOPE) ? [...base, LEADER_SCOPE] : base;
 }

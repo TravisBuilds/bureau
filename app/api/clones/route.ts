@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
+import { ensureDefaultWorkspaceMembership } from '@/lib/post-login';
 import { query } from '@/lib/db';
 
 /**
@@ -8,6 +9,12 @@ import { query } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
+    if (!user.workspaceId) {
+      const joined = await ensureDefaultWorkspaceMembership(user.id, user.email);
+      if (joined) {
+        user.workspaceId = joined;
+      }
+    }
     
     if (!user.workspaceId) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });

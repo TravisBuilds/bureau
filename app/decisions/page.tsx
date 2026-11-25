@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { withUser } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
+import { ensureDefaultWorkspaceMembership, getDefaultWorkspaceId } from '@/lib/post-login';
 import DecisionsPageContent from './page-content';
 
 export default async function DecisionsPage() {
@@ -10,8 +11,12 @@ export default async function DecisionsPage() {
     redirect('/auth/signin');
   }
 
-  if (!user.workspaceId) {
-    redirect('/auth/signup?error=invite-required');
+  let workspaceId = user.workspaceId;
+  if (!workspaceId) {
+    workspaceId = await ensureDefaultWorkspaceMembership(user.id, user.email);
+    if (!workspaceId) {
+      redirect(getDefaultWorkspaceId() ? '/auth/signin?error=workspace-error' : '/auth/signup?error=invite-required');
+    }
   }
 
   const data = await withUser(user.id, user.email, async (client) => {
@@ -40,7 +45,7 @@ export default async function DecisionsPage() {
          CASE WHEN d.verdict = 'pending' THEN 0 ELSE 1 END,
          d.review_date ASC,
          d.created_at DESC`,
-      [user.workspaceId]
+      [workspaceId]
     );
 
     // Get streams for the create form
@@ -49,7 +54,7 @@ export default async function DecisionsPage() {
        FROM bureau.streams
        WHERE workspace_id = $1
        ORDER BY name ASC`,
-      [user.workspaceId]
+      [workspaceId]
     );
 
     return {

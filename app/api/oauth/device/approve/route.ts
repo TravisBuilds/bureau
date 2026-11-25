@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { approveDeviceCode } from '@/lib/oauth-grants';
 import { requireAuth } from '@/lib/auth-helpers';
 import { ensureDefaultWorkspaceMembership } from '@/lib/post-login';
+import { withUser } from '@/lib/db';
+import { recordConsent } from '@/lib/activity-log';
 
 /**
  * POST /api/oauth/device/approve
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_code, agent_label, stream_ids, allow_create_streams } = body;
+    const { user_code, agent_label, stream_ids, allow_create_streams, activity_notice_accepted } = body;
 
     if (!user_code || !agent_label) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -39,6 +41,12 @@ export async function POST(request: NextRequest) {
 
     if (!approved) {
       return NextResponse.json({ error: 'Failed to approve device code' }, { status: 400 });
+    }
+
+    // AI activity logging notice acknowledgement (see /api/oauth/authorize).
+    if (activity_notice_accepted === true) {
+      const workspaceId = user.workspaceId;
+      await withUser(user.id, user.email, (client) => recordConsent(client, workspaceId, user.id, 'device_consent'));
     }
 
     return NextResponse.json({ success: true });

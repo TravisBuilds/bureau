@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { defaultAgentLabel } from '@/lib/display-name';
+import ActivityNotice from '@/components/ActivityNotice';
 import { scopesForRole, SCOPE_DESCRIPTIONS } from '@/lib/oauth-scopes';
 
 interface Stream {
@@ -21,6 +22,7 @@ function DeviceFlowContent() {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [selectedStreams, setSelectedStreams] = useState<string[]>([]);
   const [allowCreate, setAllowCreate] = useState(true);
+  const [noticeAccepted, setNoticeAccepted] = useState(false);
   const [agentLabel, setAgentLabel] = useState('');
   const [role, setRole] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -79,6 +81,7 @@ function DeviceFlowContent() {
           agent_label: agentLabel.trim() || defaultAgentLabel('', deviceInfo?.clientName),
           stream_ids: selectedStreams,
           allow_create_streams: allowCreate,
+          activity_notice_accepted: noticeAccepted,
         }),
       });
       const data = await res.json();
@@ -154,9 +157,10 @@ function DeviceFlowContent() {
           <ul className="mb-6 space-y-1 text-sm text-gray-700 list-disc pl-5">
             {scopesForRole(deviceInfo.scopes || [], role).map(s => <li key={s}>{SCOPE_DESCRIPTIONS[s] || s}</li>)}
           </ul>
+          <ActivityNotice checked={noticeAccepted} onChange={setNoticeAccepted} />
           <button
             onClick={handleApprove}
-            disabled={loading}
+            disabled={loading || !noticeAccepted}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-lg font-medium py-3 rounded-md"
           >
             {loading ? 'Connecting\u2026' : 'Approve'}

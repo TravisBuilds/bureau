@@ -56,13 +56,13 @@ describe('MCP protocol', () => {
       .toEqual({ jsonrpc: '2.0', id: 2, result: {} });
   });
 
-  it('tools/list returns all 11 Bureau tools with input schemas', async () => {
+  it('tools/list returns all 14 Bureau tools with input schemas', async () => {
     const d = await (await call({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} })).json();
     const names = d.result.tools.map((t: any) => t.name).sort();
     expect(names).toEqual([
-      'bureau_answer_question', 'bureau_ask_question', 'bureau_escalate_question', 'bureau_get_questions', 'bureau_list_streams',
-      'bureau_post_heartbeat', 'bureau_register_clone', 'bureau_report_cost', 'bureau_team_health',
-      'bureau_update_profile', 'bureau_whoami',
+      'bureau_activity_timeline', 'bureau_answer_question', 'bureau_ask_question', 'bureau_escalate_question', 'bureau_get_questions',
+      'bureau_list_streams', 'bureau_log_activity', 'bureau_post_heartbeat', 'bureau_register_clone', 'bureau_report_cost',
+      'bureau_search_activity', 'bureau_team_health', 'bureau_update_profile', 'bureau_whoami',
     ]);
     for (const t of d.result.tools) expect(t.inputSchema?.type).toBe('object');
   });

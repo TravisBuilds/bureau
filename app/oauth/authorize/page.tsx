@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DEFAULT_SCOPES, scopesForRole } from '@/lib/oauth-scopes';
 import { defaultAgentLabel } from '@/lib/display-name';
+import ActivityNotice from '@/components/ActivityNotice';
 
 interface Client {
   client_id: string;
@@ -26,6 +27,7 @@ const SCOPE_TEXT: Record<string, string> = {
   'questions:read': 'See questions teammates ask you',
   'questions:write': 'Answer or pass on those questions',
   'team:read': 'See your team\u2019s check-ins and ask teammates\u2019 AIs questions',
+  'activity:read': 'Search your team\u2019s logged AI requests (owners and admins only)',
 };
 
 /** RFC 9207 issuer, sent back with every authorization response. */
@@ -47,6 +49,7 @@ function OAuthAuthorizeContent() {
   const [agentLabel, setAgentLabel] = useState('');
   const [selectedStreams, setSelectedStreams] = useState<string[]>([]);
   const [allowCreate, setAllowCreate] = useState(true);
+  const [noticeAccepted, setNoticeAccepted] = useState(false);
 
   const clientId = searchParams.get('client_id');
   const redirectUri = searchParams.get('redirect_uri');
@@ -126,6 +129,7 @@ function OAuthAuthorizeContent() {
           stream_ids: selectedStreams,
           allow_create_streams: allowCreate,
           approved: true,
+          activity_notice_accepted: noticeAccepted,
         }),
       });
       const data = await res.json();
@@ -187,9 +191,11 @@ function OAuthAuthorizeContent() {
           {scopesForRole(scopes, role).map(s => <li key={s}>{SCOPE_TEXT[s] || s}</li>)}
         </ul>
 
+        <ActivityNotice checked={noticeAccepted} onChange={setNoticeAccepted} />
+
         <button
           onClick={handleApprove}
-          disabled={approving}
+          disabled={approving || !noticeAccepted}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-lg font-medium py-3 rounded-md transition"
         >
           {approving ? 'Connecting\u2026' : 'Approve'}

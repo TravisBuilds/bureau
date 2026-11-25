@@ -1,5 +1,5 @@
 /** Scopes shared by the authorize, device and DCR endpoints. */
-export const ALLOWED_SCOPES: string[] = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read'];
+export const ALLOWED_SCOPES: string[] = ['ingest:write', 'clone:write', 'questions:read', 'questions:write', 'team:read', 'activity:read'];
 
 /** What an employee's bot gets when the client asks for nothing (team:read is opt-in). */
 export const DEFAULT_SCOPES: string[] = ['ingest:write', 'clone:write', 'questions:read', 'questions:write'];
@@ -15,8 +15,15 @@ export const FULL_TEAM_TRANSPARENCY = true;
 /** Read the whole team's check-ins and ask any teammate's clone a question. */
 export const LEADER_SCOPE = 'team:read';
 
+/**
+ * Read employees' logged AI requests (bureau_search_activity / bureau_activity_timeline).
+ * Owners/admins ONLY, regardless of FULL_TEAM_TRANSPARENCY: check-ins are team-wide, raw
+ * requests are not.
+ */
+export const ACTIVITY_READ_SCOPE = 'activity:read';
+
 /** The full set an owner/admin's own AI gets by default. */
-export const LEADER_SCOPES: string[] = [...DEFAULT_SCOPES, LEADER_SCOPE];
+export const LEADER_SCOPES: string[] = [...DEFAULT_SCOPES, LEADER_SCOPE, ACTIVITY_READ_SCOPE];
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member';
 
@@ -26,6 +33,7 @@ export const SCOPE_DESCRIPTIONS: Record<string, string> = {
   'questions:read': 'Read questions asked of you',
   'questions:write': 'Answer and escalate questions',
   'team:read': "See your team's check-ins and ask any teammate's AI a question",
+  'activity:read': "Search your team's logged AI requests (owners and admins only)",
 };
 
 /**
@@ -53,11 +61,17 @@ export const canReadTeam = (role: string | null | undefined): boolean =>
  *   or owner/admin otherwise): team:read is added when the request covers the full employee
  *   set (or explicitly requests team:read). Narrow script requests (e.g. just ingest:write)
  *   are left as asked.
+ * - activity:read is added only for owner/admin (same trigger), and always removed otherwise.
  * Unknown scopes pass through untouched so the caller's invalid_scope check still fires.
  */
 export function scopesForRole(scopes: string[], role: string | null | undefined): string[] {
-  const base = scopes.filter(s => s !== LEADER_SCOPE);
+  const base = scopes.filter(s => s !== LEADER_SCOPE && s !== ACTIVITY_READ_SCOPE);
   if (!canReadTeam(role)) return base;
   const coversDefault = DEFAULT_SCOPES.every(s => scopes.includes(s));
-  return coversDefault || scopes.includes(LEADER_SCOPE) ? [...base, LEADER_SCOPE] : base;
+  const out = coversDefault || scopes.includes(LEADER_SCOPE) ? [...base, LEADER_SCOPE] : base;
+  // activity:read: owners/admins only (never members, even under full transparency).
+  if (isLeaderRole(role) && (coversDefault || scopes.includes(ACTIVITY_READ_SCOPE))) out.push(ACTIVITY_READ_SCOPE);
+  return out;
 }
+
+export const canReadActivity = (role: string | null | undefined): boolean => isLeaderRole(role);

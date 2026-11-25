@@ -172,9 +172,11 @@ describe('scopesForRole (pure)', () => {
     expect(scopesForRole([...DEFAULT, 'team:read'], 'member')).toEqual([...DEFAULT, 'team:read']);
     expect(scopesForRole(['ingest:write'], 'member')).toEqual(['ingest:write']);
     expect(scopesForRole(['team:read'], null)).toEqual([]);
-    expect(scopesForRole(DEFAULT, 'owner')).toEqual([...DEFAULT, 'team:read']);
-    expect(scopesForRole(DEFAULT, 'admin')).toEqual([...DEFAULT, 'team:read']);
-    expect(scopesForRole([...DEFAULT, 'team:read'], 'owner')).toEqual([...DEFAULT, 'team:read']);
+    // owners/admins also get activity:read (logged AI requests); members never do
+    expect(scopesForRole(DEFAULT, 'owner')).toEqual([...DEFAULT, 'team:read', 'activity:read']);
+    expect(scopesForRole(DEFAULT, 'admin')).toEqual([...DEFAULT, 'team:read', 'activity:read']);
+    expect(scopesForRole([...DEFAULT, 'team:read'], 'owner')).toEqual([...DEFAULT, 'team:read', 'activity:read']);
+    expect(scopesForRole([...DEFAULT, 'activity:read'], 'member')).toEqual([...DEFAULT, 'team:read']);
     expect(scopesForRole(['ingest:write'], 'owner')).toEqual(['ingest:write']);
     expect(scopesForRole(['team:read', 'ingest:write'], 'admin')).toEqual(['ingest:write', 'team:read']);
     expect(scopesForRole(resolveScopes(undefined), 'member')).toContain('team:read');
@@ -198,7 +200,7 @@ describe('consent (POST /api/oauth/authorize) applies the role', () => {
   it('owner connecting with the default set gets team:read and team_health works', async () => {
     const c = await createClient();
     const at = await consentConnect(W1.owner, c, DEFAULT, 'Travis Claude');
-    expect(await linkScopes(at)).toEqual([...DEFAULT, 'team:read']);
+    expect(await linkScopes(at)).toEqual([...DEFAULT, 'team:read', 'activity:read']);
     const th = await mcp(at, 'bureau_team_health');
     expect(th.body.error).toBeUndefined();
     expect(th.data.map((r: any) => r.handle)).toContain('jack-claude');
@@ -242,14 +244,14 @@ describe('consent (POST /api/oauth/authorize) applies the role', () => {
     const old = await oauth.exchangeCode(code, verifier, clientId, 'http://localhost/cb', null);
     expect(await linkScopes(old.accessToken)).toEqual(DEFAULT);
     const fresh = await consentConnect(W1.owner, clientId, DEFAULT, 'Old Claude');
-    expect(await linkScopes(fresh)).toEqual([...DEFAULT, 'team:read']);
+    expect(await linkScopes(fresh)).toEqual([...DEFAULT, 'team:read', 'activity:read']);
   });
 });
 
 describe('device flow applies the role at mint time (no migration)', () => {
   it('owner, admin, and member get team:read; narrow script scope kept', async () => {
     const o = await deviceConnect(W1.owner, undefined, 'travis-cli');
-    expect(await linkScopes(o)).toEqual([...DEFAULT, 'team:read']);
+    expect(await linkScopes(o)).toEqual([...DEFAULT, 'team:read', 'activity:read']);
     expect((await mcp(o, 'bureau_whoami')).data.scopes).toContain('team:read');
     expect((await mcp(o, 'bureau_team_health')).body.error).toBeUndefined();
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, Shield, AlertCircle, Plus, Key, Clock, Users, MessageCircleQuestion } from 'lucide-react';
+import { Building2, Shield, AlertCircle, Plus, Key, Clock, Users, MessageCircleQuestion, Activity } from 'lucide-react';
 import AskTeamBox from '@/components/AskTeamBox';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -86,6 +86,13 @@ export default function TopFloorPageContent({
               >
                 <MessageCircleQuestion className="w-4 h-4" />
                 Questions
+              </button>
+              <button
+                onClick={() => router.push('/activity')}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                <Activity className="w-4 h-4" />
+                Activity
               </button>
               <button
                 onClick={() => router.push('/connections')}

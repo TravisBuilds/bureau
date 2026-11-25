@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
       agent_label,
       stream_ids,
       allow_create_streams,
-      approved
+      approved,
+      activity_notice_accepted
     } = body;
     
     // Validate required fields
@@ -123,6 +124,14 @@ export async function POST(request: NextRequest) {
       allowCreateStreams: allow_create_streams || false
     });
     
+    // AI activity logging notice (BC PIPA notice before collection). The consent page only
+    // enables Approve once the box is ticked; we record the acknowledgement here. Without it the
+    // connection still works but bureau_log_activity refuses to store anything.
+    if (activity_notice_accepted === true) {
+      const { recordConsent } = await import('@/lib/activity-log');
+      await withUser(user.id, user.email, (client) => recordConsent(client, workspaceId as string, user.id, 'oauth_consent'));
+    }
+
     // RFC 9207: the consent page appends iss to the redirect
     const iss = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
     return NextResponse.json({ code, state, iss });

@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, withUser } from '@/lib/db';
 import { lookupClone, formatCandidates, type LookupResponse } from '@/lib/clone-lookup';
 import { latestCheckin } from '@/lib/clone-status';
-import { canReadTeam, FULL_TEAM_TRANSPARENCY } from '@/lib/oauth-scopes';
+import { canReadTeam, canReadActivity, FULL_TEAM_TRANSPARENCY, ACTIVITY_READ_SCOPE } from '@/lib/oauth-scopes';
+import { logActivity, listActivity } from '@/lib/activity-log';
+import { ActivityKeyError, activityKeyConfigured } from '@/lib/activity-crypto';
+import { AGENT_LOGGING_INSTRUCTIONS, ACTIVITY_RETENTION_DAYS } from '@/lib/activity-policy';
 
 /**
  * Bureau MCP Server (Streamable HTTP transport)
@@ -13,6 +16,8 @@ import { canReadTeam, FULL_TEAM_TRANSPARENCY } from '@/lib/oauth-scopes';
  * - bureau_list_streams: List streams this agent can access
  * - bureau_whoami: Get agent link info
  * - bureau_team_health / bureau_ask_question (team:read): read the team, ask a teammate's clone
+ * - bureau_log_activity (clone:write + accepted notice): log each request the user makes
+ * - bureau_search_activity / bureau_activity_timeline (activity:read, owners/admins only)
  */
 
 interface MCPRequest {
@@ -100,6 +105,19 @@ export async function POST(request: NextRequest) {
         ? 'team:read requires active workspace membership'
         : 'team:read is only for workspace owners and admins';
     };
+    // activity:read tools: scope on the token AND the caller is an active owner/admin right now.
+    // Deliberately NOT team:read (which every member has under full transparency).
+    const activityDenied = async (): Promise<string | null> => {
+      if (!cred.scopes.includes(ACTIVITY_READ_SCOPE)) return `Missing required scope: ${ACTIVITY_READ_SCOPE} (owners and admins: reconnect your AI to Bureau to get it)`;
+      const roleRows = await withUser(cred.user_id, cred.user_email, async (client) =>
+        (await client.query(
+          `SELECT role::text AS role FROM bureau.workspace_members
+           WHERE workspace_id = $1 AND user_id = $2 AND removed_at IS NULL LIMIT 1`,
+          [cred.workspace_id, cred.user_id]
+        )).rows as Array<{ role: string }>
+      );
+      return canReadActivity(roleRows[0]?.role) ? null : 'Logged AI activity is only visible to workspace owners and admins';
+    };
     const toolText = (rpcId: any, data: any) => NextResponse.json({
       jsonrpc: '2.0', id: rpcId, result: { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] },
     } as MCPResponse);
@@ -146,7 +164,9 @@ export async function POST(request: NextRequest) {
           serverInfo: {
             name: 'Bureau MCP Server',
             version: '1.0.0'
-          }
+          },
+          // MCP InitializeResult.instructions: clients that support it add this to the model's context.
+          instructions: AGENT_LOGGING_INSTRUCTIONS
         }
       } as MCPResponse);
     }
@@ -269,6 +289,51 @@ export async function POST(request: NextRequest) {
                   confidence: { type: 'string' }
                 },
                 required: ['date', 'top_priority']
+              }
+            },
+            {
+              name: 'bureau_log_activity',
+              description: 'REQUIRED ON EVERY TURN: log what the user just asked you to do, once per user message, before or while you answer. Bureau removes secrets and encrypts it; only the user and their workspace owners/admins can read it, and it is deleted after ' + ACTIVITY_RETENTION_DAYS + ' days. If the user says it is personal, call with personal=true and request="personal".',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  request: { type: 'string', description: "One or two sentences describing what the user asked (names, projects, files they mentioned). Never include passwords or keys. Max 4000 characters." },
+                  detail: { type: 'string', description: 'Optional: what you did for them (sent, edited, created, searched, ran). Max 4000 characters.' },
+                  kind: { type: 'string', enum: ['request', 'action'], description: 'request (default) for what they asked; action for something you did on their behalf' },
+                  personal: { type: 'boolean', description: 'true if the user marked this request personal/off the record; only the fact that a personal request happened is stored' },
+                  conversation_ref: { type: 'string', description: 'Optional: a conversation/thread id or title, so related entries group together' },
+                  occurred_at: { type: 'string', description: 'Optional ISO 8601 time of the request (defaults to now; ignored if not within the last 24 hours)' }
+                },
+                required: ['request']
+              }
+            },
+            {
+              name: 'bureau_search_activity',
+              annotations: { readOnlyHint: true },
+              description: "Owners/admins only: search everyone's logged AI requests from the last " + ACTIVITY_RETENTION_DAYS + " days (what people asked their AI). Every word in query must match. Pass who (name, handle or email) to search one person. Results are newest first; personal entries show as hidden.",
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  query: { type: 'string', description: 'Words to find (case-insensitive). Omit to list the newest entries.' },
+                  who: { type: 'string', description: 'Optional: a teammate name, handle or email' },
+                  since: { type: 'string', description: 'Optional ISO 8601 start time' },
+                  until: { type: 'string', description: 'Optional ISO 8601 end time' },
+                  limit: { type: 'number', description: 'Max entries (1-100, default 25)' }
+                }
+              }
+            },
+            {
+              name: 'bureau_activity_timeline',
+              annotations: { readOnlyHint: true },
+              description: "Owners/admins only: one teammate's logged AI requests, newest first, for the last N days (default 7, max " + ACTIVITY_RETENTION_DAYS + "). Use for \"what has Jack been doing?\"",
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  who: { type: 'string', description: 'A teammate name, handle or email' },
+                  days: { type: 'number', description: 'How many days back (1-' + ACTIVITY_RETENTION_DAYS + ', default 7)' },
+                  limit: { type: 'number', description: 'Max entries (1-200, default 100)' }
+                },
+                required: ['who']
               }
             },
             {
@@ -770,6 +835,113 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      if (toolName === 'bureau_log_activity') {
+        if (!cred.scopes.includes('clone:write')) return toolError(id, -32603, 'Missing required scope: clone:write');
+        if (!activityKeyConfigured()) return toolError(id, -32603, 'Activity logging is not configured on this Bureau server yet');
+        const request = typeof toolArgs.request === 'string' ? toolArgs.request : '';
+        const personal = toolArgs.personal === true;
+        if (!personal && !request.trim()) return toolError(id, -32602, 'Missing required parameter: request');
+        try {
+          const out = await withUser(cred.user_id, cred.user_email, async (client) => {
+            let cloneId: string | null = null;
+            let agentLabel: string | null = null;
+            let vendor: string | null = null;
+            if (cred.agent_link_id) {
+              const rows = (await client.query(
+                `SELECT l.agent_label, c.id AS clone_id, c.vendor::text AS vendor
+                 FROM bureau.agent_links l
+                 LEFT JOIN bureau.digital_clones c ON c.agent_link_id = l.id
+                 WHERE l.id = $1 LIMIT 1`,
+                [cred.agent_link_id]
+              )).rows;
+              cloneId = rows[0]?.clone_id ?? null;
+              agentLabel = rows[0]?.agent_label ?? null;
+              vendor = rows[0]?.vendor ?? null;
+            }
+            return logActivity(client, {
+              workspaceId: cred.workspace_id,
+              userId: cred.user_id,
+              cloneId,
+              agentLinkId: cred.agent_link_id,
+              agentLabel,
+              vendor,
+              kind: toolArgs.kind === 'action' ? 'action' : 'request',
+              request,
+              detail: typeof toolArgs.detail === 'string' ? toolArgs.detail : null,
+              conversationRef: typeof toolArgs.conversation_ref === 'string' ? toolArgs.conversation_ref : null,
+              occurredAt: typeof toolArgs.occurred_at === 'string' ? toolArgs.occurred_at : null,
+              personal,
+            });
+          });
+          if (out.status === 'consent_required') {
+            const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
+            return toolText(id, {
+              status: 'consent_required',
+              message: `Nothing was logged. The user has not accepted Bureau's AI activity logging notice yet. Ask them once to open ${origin}/activity and accept it, then carry on helping.`,
+            });
+          }
+          if (out.status === 'invalid') return toolError(id, -32602, out.message);
+          return toolText(id, out);
+        } catch (error: unknown) {
+          if (error instanceof ActivityKeyError) return toolError(id, -32603, 'Activity logging is not configured on this Bureau server yet');
+          return toolError(id, -32603, 'Failed to log activity');
+        }
+      }
+
+      if (toolName === 'bureau_search_activity' || toolName === 'bureau_activity_timeline') {
+        const denied = await activityDenied();
+        if (denied) return toolError(id, -32603, denied);
+        if (!activityKeyConfigured()) return toolError(id, -32603, 'Activity logging is not configured on this Bureau server yet');
+        const isTimeline = toolName === 'bureau_activity_timeline';
+        const who = typeof toolArgs.who === 'string' ? toolArgs.who.trim() : '';
+        if (isTimeline && !who) return toolError(id, -32602, 'Missing required parameter: who');
+        try {
+          const out = await withUser(cred.user_id, cred.user_email, async (client) => {
+            let userIds: string[] | null = null;
+            let person: { display_name: string | null; handle: string | null; owner_email: string | null } | null = null;
+            if (who) {
+              const match = await lookupClone(client, cred.workspace_id, who);
+              if (match.status !== 'found') return lookupNotFoundResult(who, match);
+              userIds = [match.clone.owner_user_id];
+              person = { display_name: match.clone.display_name, handle: match.clone.handle, owner_email: match.clone.owner_email };
+            }
+            let since: string | null = typeof toolArgs.since === 'string' ? toolArgs.since : null;
+            const until: string | null = typeof toolArgs.until === 'string' ? toolArgs.until : null;
+            let limit = Math.min(Math.max(Number(toolArgs.limit) || 25, 1), 100);
+            if (isTimeline) {
+              const days = Math.min(Math.max(Math.floor(Number(toolArgs.days) || 7), 1), ACTIVITY_RETENTION_DAYS);
+              since = new Date(Date.now() - days * 86400_000).toISOString();
+              limit = Math.min(Math.max(Number(toolArgs.limit) || 100, 1), 200);
+            }
+            const res = await listActivity(client, {
+              workspaceId: cred.workspace_id,
+              userIds,
+              query: isTimeline ? null : (typeof toolArgs.query === 'string' ? toolArgs.query : null),
+              since,
+              until,
+              limit,
+            });
+            return {
+              status: 'ok',
+              ...(person ? { who: person } : {}),
+              count: res.entries.length,
+              ...(res.truncated ? { note: 'Only the newest 2000 entries were searched; narrow with who/since/until.' } : {}),
+              entries: res.entries.map(e => ({
+                when: e.occurred_at,
+                who: e.email,
+                agent: e.agent_label,
+                kind: e.kind,
+                request: e.hidden ? '(hidden as personal)' : e.request,
+                ...(e.detail ? { detail: e.detail } : {}),
+              })),
+            };
+          });
+          return toolText(id, out);
+        } catch (error: unknown) {
+          return toolError(id, -32603, 'Failed to read activity');
+        }
+      }
+
       if (toolName === 'bureau_team_health') {
         const denied = await leaderDenied();
         if (denied) return toolError(id, -32603, denied);

@@ -214,6 +214,13 @@ export default function ConnectPage() {
           </div>
         </div>
 
+        <div className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-gray-800">
+          <strong>Heads up:</strong> connected AIs log each request you make of them to Bureau. You&apos;ll see the full notice
+          before you approve, and you can review, mark personal or delete entries on{' '}
+          <a href="/activity" className="text-blue-600 hover:underline">My activity</a>, which also has instructions to paste
+          into your AI so it logs reliably.
+        </div>
+
         <div className="mt-8 text-center">
           <button
             onClick={() => router.push('/top-floor')}

@@ -105,9 +105,12 @@ export default function TeamHealthPage() {
             <h1 className="text-4xl font-bold">Team Health Dashboard</h1>
             <p className="text-gray-600 mt-2">Real-time status across all digital clones</p>
           </div>
-          <Link href="/top-floor" className="text-blue-600 hover:underline">
-            ← Back to Top Floor
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/activity" className="text-blue-600 hover:underline">Activity</Link>
+            <Link href="/top-floor" className="text-blue-600 hover:underline">
+              ← Back to Top Floor
+            </Link>
+          </div>
         </div>
 
         {error && (

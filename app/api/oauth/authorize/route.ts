@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-helpers';
 import { query, withUser } from '@/lib/db';
 
-import { ALLOWED_SCOPES, resolveScopes } from '@/lib/oauth-scopes';
+import { ALLOWED_SCOPES, resolveScopes, scopesForRole } from '@/lib/oauth-scopes';
 import { storeAuthCode, validateRedirectUri } from '@/lib/oauth-server';
 
 /**
@@ -12,8 +12,19 @@ import { storeAuthCode, validateRedirectUri } from '@/lib/oauth-server';
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
-    
-    if (!user.workspaceId) {
+    let workspaceId = user.workspaceId;
+    let role = user.role;
+    if (!workspaceId) {
+      const { ensureDefaultWorkspaceMembership } = await import('@/lib/post-login');
+      workspaceId = await ensureDefaultWorkspaceMembership(user.id, user.email);
+      if (workspaceId) {
+        const { getAuthUser } = await import('@/lib/auth-helpers');
+        const refreshed = await getAuthUser();
+        role = refreshed?.role ?? 'member';
+      }
+    }
+
+    if (!workspaceId) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });
     }
     
@@ -44,7 +55,8 @@ export async function POST(request: NextRequest) {
     if (scopes !== undefined && scopes !== null && !Array.isArray(scopes) && typeof scopes !== 'string') {
       return NextResponse.json({ error: 'invalid_scope', error_description: 'scopes must be an array' }, { status: 400 });
     }
-    const requestedScopes = resolveScopes(scopes);
+    // Apply workspace role policy (all active members get team:read under full transparency).
+    const requestedScopes = scopesForRole(resolveScopes(scopes), role);
     if (typeof agent_label !== 'string' || !agent_label.trim() || agent_label.length > 100) {
       return NextResponse.json({ error: 'agent_label must be 1-100 characters' }, { status: 400 });
     }
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
       const streamRows = await withUser(user.id, user.email, async (client) =>
         (await client.query(
           `SELECT id FROM bureau.streams WHERE workspace_id = $1 AND id = ANY($2)`,
-          [user.workspaceId, stream_ids]
+          [workspaceId, stream_ids]
         )).rows
       );
       
@@ -100,7 +112,7 @@ export async function POST(request: NextRequest) {
     // Store auth code
     const code = await storeAuthCode({
       userId: user.id,
-      workspaceId: user.workspaceId,
+      workspaceId,
       clientId: client_id,
       redirectUri: redirect_uri,
       codeChallenge: code_challenge,

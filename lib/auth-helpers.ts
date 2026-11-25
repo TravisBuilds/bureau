@@ -10,6 +10,7 @@ export interface AuthUser {
   id: string;
   email: string;
   workspaceId: string | null;
+  role: 'owner' | 'admin' | 'member' | null;
 }
 
 /**
@@ -46,11 +47,19 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   // user_workspaces() takes no params - it reads auth.uid() from JWT claims
   try {
     const { withUser } = await import('./db');
-    const workspaceId = await withUser(user.id, user.email, async (client) => {
+    const { workspaceId, role } = await withUser(user.id, user.email, async (client) => {
       const result = await client.query(
         'SELECT id FROM bureau.user_workspaces() AS id'
       );
-      return result.rows.length > 0 ? result.rows[0].id : null;
+      const workspaceId: string | null = result.rows.length > 0 ? result.rows[0].id : null;
+      if (!workspaceId) return { workspaceId: null, role: null };
+      // Role in that workspace (workspace_members RLS lets a member read their own workspace's rows)
+      const roleRows = await client.query(
+        `SELECT role::text AS role FROM bureau.workspace_members
+         WHERE workspace_id = $1 AND user_id = $2 AND removed_at IS NULL LIMIT 1`,
+        [workspaceId, user.id]
+      );
+      return { workspaceId, role: (roleRows.rows[0]?.role ?? null) as AuthUser['role'] };
     });
 
     // User authenticated but no workspace (signed in without invite)
@@ -59,6 +68,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
         id: user.id,
         email: user.email,
         workspaceId: null, // null indicates no workspace
+        role: null,
       };
     }
 
@@ -66,6 +76,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
       id: user.id,
       email: user.email,
       workspaceId,
+      role,
     };
   } catch (error) {
     console.error('Error fetching user workspace:', error);

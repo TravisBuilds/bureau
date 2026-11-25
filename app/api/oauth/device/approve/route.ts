@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { approveDeviceCode } from '@/lib/oauth-grants';
 import { requireAuth } from '@/lib/auth-helpers';
+import { ensureDefaultWorkspaceMembership } from '@/lib/post-login';
 
 /**
  * POST /api/oauth/device/approve
@@ -9,6 +10,12 @@ import { requireAuth } from '@/lib/auth-helpers';
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
+    if (!user.workspaceId) {
+      const joined = await ensureDefaultWorkspaceMembership(user.id, user.email);
+      if (joined) {
+        user.workspaceId = joined;
+      }
+    }
     
     if (!user.workspaceId) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 });

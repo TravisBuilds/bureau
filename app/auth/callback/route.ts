@@ -174,8 +174,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(result.redirect, request.url));
     } catch (error) {
       if (error instanceof Error && error.message === 'INVITE_REQUIRED') {
+        const { getDefaultWorkspaceId } = await import('@/lib/post-login');
+        const dest = getDefaultWorkspaceId() ? '/auth/signin?error=workspace-error' : '/auth/signup?error=invite-required';
         return NextResponse.redirect(
-          new URL('/auth/signup?error=invite-required', request.url)
+          new URL(dest, request.url)
         );
       }
       console.error('Error checking/creating workspace:', error);

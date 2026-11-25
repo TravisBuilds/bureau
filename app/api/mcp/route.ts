@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withUser } from '@/lib/db';
+import { lookupClone, formatCandidates, type LookupResponse } from '@/lib/clone-lookup';
+import { latestCheckin } from '@/lib/clone-status';
+import { canReadTeam, FULL_TEAM_TRANSPARENCY } from '@/lib/oauth-scopes';
 
 /**
  * Bureau MCP Server (Streamable HTTP transport)
@@ -9,6 +12,7 @@ import { query, withUser } from '@/lib/db';
  * - bureau_report_cost: Report cost/metric into allowed streams
  * - bureau_list_streams: List streams this agent can access
  * - bureau_whoami: Get agent link info
+ * - bureau_team_health / bureau_ask_question (team:read): read the team, ask a teammate's clone
  */
 
 interface MCPRequest {
@@ -79,6 +83,33 @@ export async function POST(request: NextRequest) {
     }
     
     const cred = credRows[0];
+
+    // team:read tools: the scope must be on the token AND the token owner must still be an
+    // active member allowed by canReadTeam (all active members under FULL_TEAM_TRANSPARENCY).
+    const leaderDenied = async (): Promise<string | null> => {
+      if (!cred.scopes.includes('team:read')) return 'Missing required scope: team:read';
+      const roleRows = await withUser(cred.user_id, cred.user_email, async (client) =>
+        (await client.query(
+          `SELECT role::text AS role FROM bureau.workspace_members
+           WHERE workspace_id = $1 AND user_id = $2 AND removed_at IS NULL LIMIT 1`,
+          [cred.workspace_id, cred.user_id]
+        )).rows as Array<{ role: string }>
+      );
+      if (canReadTeam(roleRows[0]?.role)) return null;
+      return FULL_TEAM_TRANSPARENCY
+        ? 'team:read requires active workspace membership'
+        : 'team:read is only for workspace owners and admins';
+    };
+    const toolText = (rpcId: any, data: any) => NextResponse.json({
+      jsonrpc: '2.0', id: rpcId, result: { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] },
+    } as MCPResponse);
+    const toolError = (rpcId: any, code: number, message: string) =>
+      NextResponse.json({ jsonrpc: '2.0', id: rpcId, error: { code, message } } as MCPResponse);
+    /** Non-found lookups become a normal tool result the AI can show (candidates / not found). */
+    const lookupNotFoundResult = (who: string, r: LookupResponse) =>
+      r.status === 'ambiguous'
+        ? { status: 'ambiguous', message: `More than one teammate matches "${who}". Ask which one they mean, then call again with the handle.`, candidates: r.candidates.map(c => ({ handle: c.handle, display_name: c.display_name, owner_email: c.owner_email })), summary: formatCandidates(r.candidates) }
+        : { status: 'not_found', message: `No teammate's AI matches "${who}" in this workspace. Call bureau_team_health to see who is connected.` };
     
     // 2. Parse MCP request
     let mcpRequest: MCPRequest;
@@ -243,23 +274,38 @@ export async function POST(request: NextRequest) {
             {
               name: 'bureau_team_health',
               annotations: { readOnlyHint: true },
-              description: 'Get team health dashboard data',
+              description: "See what your team is working on. Returns every teammate's AI with their latest daily check-in (top priority, active work, blockers), profile and whether it is stale. Pass who (a name, handle or email, e.g. \"jack\") to get just one person. Use this first for questions like \"what is Jack working on?\"",
               inputSchema: {
                 type: 'object',
-                properties: {}
+                properties: {
+                  who: { type: 'string', description: 'Optional: a teammate name, handle, email or Slack handle to filter to one person' }
+                }
               }
             },
             {
               name: 'bureau_get_questions',
               annotations: { readOnlyHint: true },
-              description: 'Get questions for this clone',
+              description: 'Get questions asked of this clone (to answer them). Pass who to see the questions asked of a teammate, with their answers.',
               inputSchema: {
                 type: 'object',
                 properties: {
                   clone_id: { type: 'string', description: 'Clone UUID (optional, resolves from agent link)' },
+                  who: { type: 'string', description: 'Optional: a teammate name, handle or email; returns questions asked of them, including answers' },
                   status: { type: 'string', enum: ['open', 'answered', 'escalated', 'closed'], description: 'Filter by status' }
                 },
                 required: []
+              }
+            },
+            {
+              name: 'bureau_ask_question',
+              description: "Ask a teammate's AI a question (e.g. who=\"jack\", question_text=\"Is the release on track?\"). Returns their latest check-in right away as a preview; their AI answers the question the next time it checks in. Read the answer later with bureau_get_questions and the same who.",
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  who: { type: 'string', description: 'Teammate name, handle, email or Slack handle' },
+                  question_text: { type: 'string', description: 'The question (max 2000 characters)' }
+                },
+                required: ['who', 'question_text']
               }
             },
             {
@@ -725,50 +771,89 @@ export async function POST(request: NextRequest) {
       }
       
       if (toolName === 'bureau_team_health') {
-        // Check team:read scope
-        if (!cred.scopes.includes('team:read')) {
-          return NextResponse.json({
-            jsonrpc: '2.0',
-            id,
-            error: {
-              code: -32603,
-              message: 'Missing required scope: team:read'
-            }
-          } as MCPResponse);
-        }
-        
+        const denied = await leaderDenied();
+        if (denied) return toolError(id, -32603, denied);
+
         try {
-          const result = await query(
+          const result = await query<{ clone_id: string }>(
             `SELECT * FROM bureau.get_team_health($1)`,
             [cred.workspace_id]
           );
-          
-          return NextResponse.json({
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(result, null, 2)
-                }
-              ]
-            }
-          } as MCPResponse);
+          const who = typeof toolArgs.who === 'string' ? toolArgs.who.trim() : '';
+          if (!who) return toolText(id, result);
+
+          const match = await withUser(cred.user_id, cred.user_email, (client) => lookupClone(client, cred.workspace_id, who));
+          if (match.status !== 'found') return toolText(id, lookupNotFoundResult(who, match));
+          const ids = new Set([match.clone.id, ...match.other_clones_of_same_person.map(c => c.id)]);
+          return toolText(id, { status: 'found', who, clones: result.filter(r => ids.has(String(r.clone_id))) });
         } catch (error: any) {
-          return NextResponse.json({
-            jsonrpc: '2.0',
-            id,
-            error: {
-              code: -32603,
-              message: error.message || 'Failed to get team health'
-            }
-          } as MCPResponse);
+          return toolError(id, -32603, error.message || 'Failed to get team health');
         }
       }
-      
+
+      if (toolName === 'bureau_ask_question') {
+        const denied = await leaderDenied();
+        if (denied) return toolError(id, -32603, denied);
+        const who = typeof toolArgs.who === 'string' ? toolArgs.who.trim() : '';
+        const questionText = typeof toolArgs.question_text === 'string' ? toolArgs.question_text.trim() : '';
+        if (!who || !questionText) return toolError(id, -32602, 'Missing required parameters: who, question_text');
+        if (questionText.length > 2000) return toolError(id, -32602, 'question_text must be at most 2000 characters');
+
+        try {
+          const out = await withUser(cred.user_id, cred.user_email, async (client) => {
+            const match = await lookupClone(client, cred.workspace_id, who);
+            if (match.status !== 'found') return lookupNotFoundResult(who, match);
+            const askRows = await client.query(
+              `SELECT bureau.ask_question($1, $2, $3, NULL, NULL, $4, NULL, 'mcp') AS question_id`,
+              [cred.workspace_id, questionText, cred.user_id, match.clone.id]
+            );
+            const checkin = await latestCheckin(client, match.clone.id);
+            return {
+              status: 'asked',
+              question_id: askRows.rows[0].question_id,
+              asked: { handle: match.clone.handle, display_name: match.clone.display_name, owner_email: match.clone.owner_email },
+              from_latest_checkin: checkin,
+              note: checkin
+                ? `Their latest check-in is from ${checkin.date}${checkin.days_old > 1 ? ` (${checkin.days_old} days old)` : ''}. The question stays open until their AI answers it; check with bureau_get_questions who="${match.clone.handle}".`
+                : `They have not posted a check-in yet. The question stays open until their AI answers it; check with bureau_get_questions who="${match.clone.handle}".`,
+            };
+          });
+          return toolText(id, out);
+        } catch (error: any) {
+          return toolError(id, -32603, error.message || 'Failed to ask question');
+        }
+      }
+
       if (toolName === 'bureau_get_questions') {
         const { clone_id: providedCloneId, status } = toolArgs;
+
+        // Owners/admins: questions asked of a teammate (with answers), resolved by name
+        if (typeof toolArgs.who === 'string' && toolArgs.who.trim()) {
+          if (!cred.scopes.includes('questions:read')) return toolError(id, -32603, 'Missing required scope: questions:read');
+          const denied = await leaderDenied();
+          if (denied) return toolError(id, -32603, denied);
+          const who = toolArgs.who.trim();
+          const validStatus = ['open', 'answered', 'escalated', 'closed'].includes(status) ? status : null;
+          try {
+            const out = await withUser(cred.user_id, cred.user_email, async (client) => {
+              const match = await lookupClone(client, cred.workspace_id, who);
+              if (match.status !== 'found') return lookupNotFoundResult(who, match);
+              const rows = (await client.query(
+                `SELECT id, question_text, answer_text, status::text AS status, source::text AS source,
+                        answered_by_clone, asked_at, answered_at, escalation_reason
+                   FROM bureau.questions
+                  WHERE workspace_id = $1 AND target_clone_id = $2 AND ($3::text IS NULL OR status::text = $3)
+                  ORDER BY asked_at DESC
+                  LIMIT 20`,
+                [cred.workspace_id, match.clone.id, validStatus]
+              )).rows;
+              return { status: 'found', who: { handle: match.clone.handle, display_name: match.clone.display_name }, questions: rows };
+            });
+            return toolText(id, out);
+          } catch (error: any) {
+            return toolError(id, -32603, error.message || 'Failed to get questions');
+          }
+        }
         
         // Resolve clone_id from agent_link if not provided
         let clone_id = providedCloneId;

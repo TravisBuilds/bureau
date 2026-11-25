@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { withUser } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
+import { ensureDefaultWorkspaceMembership, getDefaultWorkspaceId } from '@/lib/post-login';
 import TopFloorPageContent from './page-content';
 
 export default async function TopFloorPage() {
@@ -11,9 +12,13 @@ export default async function TopFloorPage() {
     redirect('/auth/signin');
   }
 
-  // User signed in but has no workspace (no invite claimed)
-  if (!user.workspaceId) {
-    redirect('/auth/signup?error=invite-required');
+  // User signed in but has no workspace yet: auto-join default workspace if configured
+  let workspaceId = user.workspaceId;
+  if (!workspaceId) {
+    workspaceId = await ensureDefaultWorkspaceMembership(user.id, user.email);
+    if (!workspaceId) {
+      redirect(getDefaultWorkspaceId() ? '/auth/signin?error=workspace-error' : '/auth/signup?error=invite-required');
+    }
   }
 
   // Fetch real workspace data
@@ -35,7 +40,7 @@ export default async function TopFloorPage() {
          AND d.review_date <= CURRENT_DATE
          ORDER BY d.review_date ASC
          LIMIT 5`,
-        [user.workspaceId]
+        [workspaceId]
       );
     } catch (error) {
       // Decisions table may not exist yet if migration hasn't been applied
@@ -74,7 +79,7 @@ export default async function TopFloorPage() {
        WHERE s.workspace_id = $1
        GROUP BY s.id, s.name, s.category, s.description
        ORDER BY s.created_at DESC`,
-      [user.workspaceId]
+      [workspaceId]
     );
 
     // Get recent ingest logs
@@ -91,7 +96,7 @@ export default async function TopFloorPage() {
        WHERE il.workspace_id = $1
        ORDER BY il.created_at DESC
        LIMIT 10`,
-      [user.workspaceId]
+      [workspaceId]
     );
 
     // Get tokens count
@@ -100,7 +105,7 @@ export default async function TopFloorPage() {
        FROM bureau.ingest_tokens
        WHERE workspace_id = $1
        AND revoked_at IS NULL`,
-      [user.workspaceId]
+      [workspaceId]
     );
 
     return {

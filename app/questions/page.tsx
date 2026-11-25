@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import AskTeamBox from '@/components/AskTeamBox';
 
 interface Question {
   id: string;
@@ -15,24 +16,10 @@ interface Question {
   answered_at: string | null;
 }
 
-interface Clone {
-  id: string;
-  display_name: string;
-  handle: string;
-  owner_email: string;
-  is_stale: boolean;
-}
-
 export default function QuestionsPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [clones, setClones] = useState<Clone[]>([]);
   const [loading, setLoading] = useState(true);
-  const [asking, setAsking] = useState(false);
-  const [showAskForm, setShowAskForm] = useState(false);
-  const [targetCloneId, setTargetCloneId] = useState('');
-  const [questionText, setQuestionText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -40,57 +27,18 @@ export default function QuestionsPage() {
 
   async function loadData() {
     try {
-      const [questionsRes, clonesRes] = await Promise.all([
-        fetch('/api/questions'),
-        fetch('/api/clones')
-      ]);
+      const questionsRes = await fetch('/api/questions');
 
       if (questionsRes.ok) {
         const data = await questionsRes.json();
         setQuestions(data.questions || []);
       }
 
-      if (clonesRes.ok) {
-        const data = await clonesRes.json();
-        setClones(data.clones || []);
-      }
 
       setLoading(false);
     } catch (err) {
       setError('Failed to load data');
       setLoading(false);
-    }
-  }
-
-  async function handleAskQuestion(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setAsking(true);
-
-    try {
-      const res = await fetch('/api/questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_clone_id: targetCloneId, question_text: questionText })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to ask question');
-        setAsking(false);
-        return;
-      }
-
-      setSuccess('Question asked successfully');
-      setQuestionText('');
-      setShowAskForm(false);
-      await loadData();
-      setAsking(false);
-    } catch (err) {
-      setError('Failed to ask question');
-      setAsking(false);
     }
   }
 
@@ -126,82 +74,7 @@ export default function QuestionsPage() {
           </div>
         )}
 
-        {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-green-800">{success}</p>
-          </div>
-        )}
-
-        {!showAskForm ? (
-          <div className="mb-6">
-            <button
-              onClick={() => setShowAskForm(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md transition"
-            >
-              Ask a Question
-            </button>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Ask a Question</h2>
-            <form onSubmit={handleAskQuestion} className="space-y-4">
-              <div>
-                <label htmlFor="clone" className="block text-sm font-medium text-gray-700 mb-2">
-                  Who do you want to ask?
-                </label>
-                <select
-                  id="clone"
-                  value={targetCloneId}
-                  onChange={(e) => setTargetCloneId(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a clone...</option>
-                  {clones.map(clone => (
-                    <option key={clone.id} value={clone.id}>
-                      {clone.display_name} (@{clone.handle}) - {clone.owner_email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="question" className="block text-sm font-medium text-gray-700 mb-2">
-                  Your Question
-                </label>
-                <textarea
-                  id="question"
-                  value={questionText}
-                  onChange={(e) => setQuestionText(e.target.value)}
-                  placeholder="What's blocking you on the API integration?"
-                  required
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex space-x-4">
-                <button
-                  type="submit"
-                  disabled={asking}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-6 rounded-md transition"
-                >
-                  {asking ? 'Sending...' : 'Ask Question'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAskForm(false);
-                    setQuestionText('');
-                  }}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-6 rounded-md transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+        <AskTeamBox title="Ask a question" onAsked={loadData} />
 
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-2xl font-bold mb-4">Recent Questions</h2>

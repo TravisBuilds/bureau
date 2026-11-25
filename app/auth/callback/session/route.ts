@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { handlePostLogin } from '@/lib/post-login';
+import { handlePostLogin, getDefaultWorkspaceId } from '@/lib/post-login';
 
 export async function POST(request: NextRequest) {
   try {
@@ -119,7 +119,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ redirect: result.redirect });
   } catch (error) {
     if (error instanceof Error && error.message === 'INVITE_REQUIRED') {
-      return NextResponse.json({ redirect: '/auth/signup?error=invite-required' });
+      return NextResponse.json({
+        redirect: getDefaultWorkspaceId() ? '/auth/signin?error=workspace-error' : '/auth/signup?error=invite-required'
+      });
     }
     
     console.error('Error in session callback:', error);

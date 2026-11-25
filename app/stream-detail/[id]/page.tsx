@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { withUser } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
+import { ensureDefaultWorkspaceMembership, getDefaultWorkspaceId } from '@/lib/post-login';
 import StreamDetailPageClient from './StreamDetailPageClient';
 
 export default async function StreamDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -13,8 +14,12 @@ export default async function StreamDetailPage({ params }: { params: Promise<{ i
     redirect('/auth/signin');
   }
 
-  if (!user.workspaceId) {
-    redirect('/auth/signup?error=invite-required');
+  let workspaceId = user.workspaceId;
+  if (!workspaceId) {
+    workspaceId = await ensureDefaultWorkspaceMembership(user.id, user.email);
+    if (!workspaceId) {
+      redirect(getDefaultWorkspaceId() ? '/auth/signin?error=workspace-error' : '/auth/signup?error=invite-required');
+    }
   }
 
   // Validate UUID format
@@ -47,7 +52,7 @@ export default async function StreamDetailPage({ params }: { params: Promise<{ i
        LEFT JOIN bureau.ingest_log il ON il.workspace_id = s.workspace_id
        WHERE s.id = $1 AND s.workspace_id = $2
        GROUP BY s.id, s.name, s.category, s.description, s.connected, s.data_source, s.last_updated`,
-      [id, user.workspaceId]
+      [id, workspaceId]
     );
 
     if (streamResult.rows.length === 0) {
@@ -68,7 +73,7 @@ export default async function StreamDetailPage({ params }: { params: Promise<{ i
        AND il.payload->>'stream_id' = $2::text
        ORDER BY il.created_at DESC
        LIMIT 20`,
-      [user.workspaceId, id]
+      [workspaceId, id]
     );
 
     return {

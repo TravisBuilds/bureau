@@ -6,6 +6,8 @@ import { canReadTeam, canReadActivity, FULL_TEAM_TRANSPARENCY, ACTIVITY_READ_SCO
 import { logActivity, listActivity } from '@/lib/activity-log';
 import { ActivityKeyError, activityKeyConfigured } from '@/lib/activity-crypto';
 import { AGENT_LOGGING_INSTRUCTIONS, ACTIVITY_RETENTION_DAYS } from '@/lib/activity-policy';
+import { recordSignal, teamBoard, listWorkUnits, buildDigest } from '@/lib/ground-truth/work-events';
+import { agentSignal, agentToolName } from '@/lib/ground-truth/agent';
 
 /**
  * Bureau MCP Server (Streamable HTTP transport)
@@ -18,6 +20,8 @@ import { AGENT_LOGGING_INSTRUCTIONS, ACTIVITY_RETENTION_DAYS } from '@/lib/activ
  * - bureau_team_health / bureau_ask_question (team:read): read the team, ask a teammate's clone
  * - bureau_log_activity (clone:write + accepted notice): log each request the user makes
  * - bureau_search_activity / bureau_activity_timeline (activity:read, owners/admins only)
+ * - bureau_work_board / bureau_work_timeline / bureau_work_digest (activity:read, owners/admins only):
+ *   rule-classified work units from connected tools + AI requests (no LLM involved)
  */
 
 interface MCPRequest {
@@ -302,7 +306,10 @@ export async function POST(request: NextRequest) {
                   kind: { type: 'string', enum: ['request', 'action'], description: 'request (default) for what they asked; action for something you did on their behalf' },
                   personal: { type: 'boolean', description: 'true if the user marked this request personal/off the record; only the fact that a personal request happened is stored' },
                   conversation_ref: { type: 'string', description: 'Optional: a conversation/thread id or title, so related entries group together' },
-                  occurred_at: { type: 'string', description: 'Optional ISO 8601 time of the request (defaults to now; ignored if not within the last 24 hours)' }
+                  occurred_at: { type: 'string', description: 'Optional ISO 8601 time of the request (defaults to now; ignored if not within the last 24 hours)' },
+                  project: { type: 'string', description: 'Optional: the project this is for (e.g. "duckduckgoose", "bureau"), if known' },
+                  tool: { type: 'string', description: 'Optional: your product name in lower case (e.g. claude, chatgpt, cursor, grok_bot)' },
+                  artifact_url: { type: 'string', description: 'Optional: https link to what was produced (PR, deploy, doc, render)' }
                 },
                 required: ['request']
               }
@@ -334,6 +341,44 @@ export async function POST(request: NextRequest) {
                   limit: { type: 'number', description: 'Max entries (1-200, default 100)' }
                 },
                 required: ['who']
+              }
+            },
+            {
+              name: 'bureau_work_board',
+              annotations: { readOnlyHint: true },
+              description: "Owners/admins only: the Team Work Board. Work units built from GitHub, Vercel, Linear, Sentry, Drive, ElevenLabs, Higgsfield and logged AI requests over the last N days: shipped / in progress / blocked per person and project, throughput per day, tool usage, and who has not accepted the notice. Use for \"what did the team ship this week?\" or \"who is blocked?\"",
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  days: { type: 'number', description: 'How many days back (1-' + ACTIVITY_RETENTION_DAYS + ', default 7)' },
+                  project: { type: 'string', description: 'Optional project slug to filter to' }
+                }
+              }
+            },
+            {
+              name: 'bureau_work_timeline',
+              annotations: { readOnlyHint: true },
+              description: "Owners/admins only: one teammate's work units (what they worked on, with links and status, and whether it is verified by a real artifact, correlated, or self-reported), newest first.",
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  who: { type: 'string', description: 'A teammate name, handle or email' },
+                  days: { type: 'number', description: 'How many days back (1-' + ACTIVITY_RETENTION_DAYS + ', default 7)' },
+                  verified_only: { type: 'boolean', description: 'Only units backed by a real artifact (commit, PR, deploy, render, ...)' }
+                },
+                required: ['who']
+              }
+            },
+            {
+              name: 'bureau_work_digest',
+              annotations: { readOnlyHint: true },
+              description: 'Owners/admins only: a daily (24h) or weekly (7d) digest of shipped, in-flight and blocked work, by project, plus coverage gaps (who has not accepted the notice or shows no activity).',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  period: { type: 'string', enum: ['daily', 'weekly'], description: 'daily (default) or weekly' },
+                  who: { type: 'string', description: 'Optional: limit to one teammate' }
+                }
               }
             },
             {
@@ -858,7 +903,7 @@ export async function POST(request: NextRequest) {
               agentLabel = rows[0]?.agent_label ?? null;
               vendor = rows[0]?.vendor ?? null;
             }
-            return logActivity(client, {
+            const logged = await logActivity(client, {
               workspaceId: cred.workspace_id,
               userId: cred.user_id,
               cloneId,
@@ -872,6 +917,27 @@ export async function POST(request: NextRequest) {
               occurredAt: typeof toolArgs.occurred_at === 'string' ? toolArgs.occurred_at : null,
               personal,
             });
+            // Feed the work-unit stitcher (never for personal requests). A failure here must not
+            // lose the log entry, so it runs inside a savepoint.
+            if (logged.status === 'logged' && !personal) {
+              await client.query('SAVEPOINT gt_feed');
+              try {
+                const feed = await recordSignal(client, { workspaceId: cred.workspace_id, userId: cred.user_id }, agentSignal({
+                  activityLogId: logged.id,
+                  request,
+                  detail: typeof toolArgs.detail === 'string' ? toolArgs.detail : null,
+                  occurredAt: typeof toolArgs.occurred_at === 'string' ? toolArgs.occurred_at : null,
+                  tool: agentToolName(toolArgs.tool, vendor, agentLabel),
+                  project: toolArgs.project,
+                  artifactUrl: toolArgs.artifact_url,
+                }));
+                await client.query('RELEASE SAVEPOINT gt_feed');
+                if (feed.status === 'recorded') return { ...logged, work_event_id: feed.work_event_id };
+              } catch {
+                await client.query('ROLLBACK TO SAVEPOINT gt_feed');
+              }
+            }
+            return logged;
           });
           if (out.status === 'consent_required') {
             const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://bureau-krustbuild.vercel.app';
@@ -939,6 +1005,51 @@ export async function POST(request: NextRequest) {
           return toolText(id, out);
         } catch (error: unknown) {
           return toolError(id, -32603, 'Failed to read activity');
+        }
+      }
+
+      if (toolName === 'bureau_work_board' || toolName === 'bureau_work_timeline' || toolName === 'bureau_work_digest') {
+        const denied = await activityDenied();
+        if (denied) return toolError(id, -32603, denied);
+        if (!activityKeyConfigured()) return toolError(id, -32603, 'Activity logging is not configured on this Bureau server yet');
+        const who = typeof toolArgs.who === 'string' ? toolArgs.who.trim() : '';
+        if (toolName === 'bureau_work_timeline' && !who) return toolError(id, -32602, 'Missing required parameter: who');
+        try {
+          const out = await withUser(cred.user_id, cred.user_email, async (client) => {
+            let userIds: string[] | null = null;
+            let person: { display_name: string | null; handle: string | null; owner_email: string | null } | null = null;
+            if (who) {
+              const match = await lookupClone(client, cred.workspace_id, who);
+              if (match.status !== 'found') return lookupNotFoundResult(who, match);
+              userIds = [match.clone.owner_user_id];
+              person = { display_name: match.clone.display_name, handle: match.clone.handle, owner_email: match.clone.owner_email };
+            }
+            const days = Math.min(Math.max(Math.floor(Number(toolArgs.days) || 7), 1), ACTIVITY_RETENTION_DAYS);
+            if (toolName === 'bureau_work_board') {
+              const board = await teamBoard(client, cred.workspace_id, { days, project: typeof toolArgs.project === 'string' ? toolArgs.project : null });
+              return { status: 'ok', ...board };
+            }
+            if (toolName === 'bureau_work_digest') {
+              const digest = await buildDigest(client, cred.workspace_id, toolArgs.period === 'weekly' ? 'weekly' : 'daily', userIds);
+              return { status: 'ok', ...(person ? { who: person } : {}), ...digest };
+            }
+            const units = await listWorkUnits(client, {
+              workspaceId: cred.workspace_id, userIds,
+              since: new Date(Date.now() - days * 86400_000).toISOString(),
+              verifiedOnly: toolArgs.verified_only === true, limit: 200,
+            });
+            return {
+              status: 'ok', who: person, count: units.length,
+              units: units.map(u => ({
+                when: u.last_seen_at, started: u.started_at, project: u.project, task: u.task_type, status: u.status,
+                title: u.hidden ? '(hidden as personal)' : u.title, link: u.artifact_link, tools: u.tools,
+                confidence: u.confidence, ...(u.blocker ? { blocker: u.blocker } : {}), effort: u.effort,
+              })),
+            };
+          });
+          return toolText(id, out);
+        } catch {
+          return toolError(id, -32603, 'Failed to read work units');
         }
       }
 

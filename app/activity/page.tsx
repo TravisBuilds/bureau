@@ -115,6 +115,7 @@ export default function ActivityPage() {
                 {view === 'team' ? 'My activity' : 'Team activity'}
               </button>
             )}
+            <Link href={data?.is_leader ? '/work' : '/my-activity'} className="text-blue-600 hover:underline">{data?.is_leader ? 'Work board' : 'My work'}</Link>
             <Link href="/team-health" className="text-blue-600 hover:underline">Team</Link>
             <Link href="/top-floor" className="text-blue-600 hover:underline">← Top Floor</Link>
           </div>

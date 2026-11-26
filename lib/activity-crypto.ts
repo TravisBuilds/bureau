@@ -62,3 +62,30 @@ export function decryptActivity(envelope: string, workspaceId: string, userId: s
   decipher.setAuthTag(Buffer.from(parts[2], 'base64'));
   return Buffer.concat([decipher.update(Buffer.from(parts[3], 'base64')), decipher.final()]).toString('utf8');
 }
+
+/**
+ * Same AES-256-GCM envelope and key, with a purpose-specific AAD so ciphertext from one table
+ * (or one integration) can't be replayed into another and still decrypt.
+ *   purpose 'work'        -> parts [workspaceId, userId]       (work unit titles/details)
+ *   purpose 'integration' -> parts [workspaceId, integrationId] (webhook secrets, API keys, refresh tokens)
+ */
+const scopedAad = (purpose: string, parts: string[]) => Buffer.from(`bureau-${purpose}:${parts.join(':')}`, 'utf8');
+
+export function encryptScoped(purpose: 'work' | 'integration', plaintext: string, parts: string[]): string {
+  const key = loadKey();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(scopedAad(purpose, parts));
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  return `v${ACTIVITY_KEY_VERSION}:${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${ct.toString('base64')}`;
+}
+
+export function decryptScoped(purpose: 'work' | 'integration', envelope: string, parts: string[]): string {
+  const p = envelope.split(':');
+  if (p.length !== 4 || p[0] !== `v${ACTIVITY_KEY_VERSION}`) throw new Error('Unsupported ciphertext');
+  const key = loadKey();
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(p[1], 'base64'));
+  decipher.setAAD(scopedAad(purpose, parts));
+  decipher.setAuthTag(Buffer.from(p[2], 'base64'));
+  return Buffer.concat([decipher.update(Buffer.from(p[3], 'base64')), decipher.final()]).toString('utf8');
+}

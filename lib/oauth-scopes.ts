@@ -33,7 +33,7 @@ export const SCOPE_DESCRIPTIONS: Record<string, string> = {
   'questions:read': 'Read questions asked of you',
   'questions:write': 'Answer and escalate questions',
   'team:read': "See your team's check-ins and ask any teammate's AI a question",
-  'activity:read': "Search your team's logged AI requests (owners and admins only)",
+  'activity:read': "Search your team's logged AI requests and read the work board (owners and admins only)",
 };
 
 /**

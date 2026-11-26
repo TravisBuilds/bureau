@@ -1,9 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- route-handler test doubles (pre-existing) */
 /**
  * Digital Clone security tests — real route handlers, real bureau_app role.
  * See tests/helpers/clone-fixtures.ts and the README for setup.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { createHmac } from 'crypto';
 import { NextRequest } from 'next/server';
 import {
   q, cleanup, admin, uid, createWorkspace, createUser, addMember, createClient,
@@ -18,9 +18,6 @@ vi.mock('@supabase/ssr', () => ({
   createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: sessionUser } }) } }),
 }));
 
-const SLACK_SECRET = 'clone-test-signing-secret';
-process.env.SLACK_SIGNING_SECRET = SLACK_SECRET;
-process.env.SLACK_BOT_TOKEN = 'xoxb-clone-test-not-real';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.invalid';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 
@@ -35,7 +32,7 @@ vi.stubGlobal('fetch', async (url: any, init?: any) => {
   throw new Error(`Unexpected network call in test: ${u}`);
 });
 
-let mcpPost: any, ingestPost: any, slackPost: any, clonesGet: any, questionsGet: any, membersGet: any, invitePost: any;
+let mcpPost: any, ingestPost: any, clonesGet: any, questionsGet: any, membersGet: any, invitePost: any;
 let teamHealthGet: any, streamsGet: any, authorizePost: any, tokenPost: any, devicePost: any, deviceApprovePost: any, connectionsGet: any, connectionDelete: any;
 
 let A: Workspace, B: Workspace;
@@ -71,30 +68,9 @@ const asUser = async (handler: any, user: Member | null) => {
   return { status: res.status, body: await res.json() };
 };
 
-const slack = async (payload: any, opts: { ts?: string; sig?: string; retry?: string } = {}) => {
-  const raw = JSON.stringify(payload);
-  const ts = opts.ts ?? String(Math.floor(Date.now() / 1000));
-  const sig = opts.sig ?? 'v0=' + createHmac('sha256', SLACK_SECRET).update(`v0:${ts}:${raw}`).digest('hex');
-  const headers: Record<string, string> = {
-    'content-type': 'application/json', 'x-slack-request-timestamp': ts, 'x-slack-signature': sig,
-  };
-  if (opts.retry) headers['x-slack-retry-num'] = opts.retry;
-  const res = await slackPost(new NextRequest('http://localhost/api/slack/events', { method: 'POST', headers, body: raw }));
-  return { status: res.status, body: await res.text() };
-};
-const mention = (eventId: string, teamId: string, text: string) => ({
-  type: 'event_callback', event_id: eventId, team_id: teamId,
-  event: { type: 'app_mention', text, user: 'U0TEST', channel: 'C0TEST', ts: '1795500000.000100' },
-});
-const slackQuestions = async (cloneId: string) =>
-  (await q<{ n: number }>(`SELECT count(*)::int n FROM bureau.questions WHERE target_clone_id = $1 AND source = 'slack'`, [cloneId]))[0].n;
-const eventStored = async (id: string) =>
-  (await q<{ n: number }>(`SELECT count(*)::int n FROM bureau.slack_event_ids WHERE event_id = $1`, [id]))[0].n;
-
 beforeAll(async () => {
   ({ POST: mcpPost } = await import('../app/api/mcp/route'));
   ({ POST: ingestPost } = await import('../app/api/ingest/route'));
-  ({ POST: slackPost } = await import('../app/api/slack/events/route'));
   ({ GET: clonesGet } = await import('../app/api/clones/route'));
   ({ GET: questionsGet } = await import('../app/api/questions/route'));
   ({ GET: membersGet } = await import('../app/api/team/members/route'));
@@ -494,73 +470,8 @@ describe('web routes under bureau_app RLS', () => {
   });
 });
 
-describe('/api/slack/events', () => {
-  it('signature checks', async () => {
-    const p = mention(`Ebad${uid()}`, teamA, `<@UBOT> ask ${handleA} hi`);
-    expect((await slack(p, { sig: 'v0=' + '0'.repeat(64) })).status).toBe(401);
-    expect((await slack(p, { sig: 'v0=short' })).status).toBe(401);
-    expect((await slack(p, { ts: String(Math.floor(Date.now() / 1000) - 600) })).status).toBe(401);
-    expect((await slack(p, { ts: '' })).status).toBe(401);
-    expect((await slack(p, { ts: 'abc' })).status).toBe(401);
-    expect(await eventStored(p.event_id)).toBe(0);
-  });
-
-  it('url_verification echoes the challenge', async () => {
-    const r = await slack({ type: 'url_verification', challenge: 'chal-123' });
-    expect(r.status).toBe(200);
-    expect(JSON.parse(r.body)).toEqual({ challenge: 'chal-123' });
-  });
-
-  it('valid mention -> exactly 1 question and a threaded postMessage', async () => {
-    slackCalls.length = 0;
-    const before = await slackQuestions(cloneA);
-    const id = `Eok${uid()}`;
-    const r = await slack(mention(id, teamA, `<@UBOT> ask ${handleA} what is blocking you?`));
-    expect(r.status).toBe(200);
-    expect((await slackQuestions(cloneA)) - before).toBe(1);
-    expect(slackCalls.length).toBe(1);
-    expect(slackCalls[0].url).toBe('https://slack.com/api/chat.postMessage');
-    expect(slackCalls[0].body).toMatchObject({ channel: 'C0TEST', thread_ts: '1795500000.000100' });
-    expect(slackCalls[0].body.text).toContain('Ship onboarding'); // from Clone A's latest heartbeat
-  });
-
-  it('duplicate event_id -> 0 new questions', async () => {
-    const id = `Edup${uid()}`;
-    await slack(mention(id, teamA, `<@UBOT> ask ${handleA} first`));
-    const mid = await slackQuestions(cloneA);
-    const r = await slack(mention(id, teamA, `<@UBOT> ask ${handleA} first`));
-    expect(r.status).toBe(200);
-    expect(await slackQuestions(cloneA)).toBe(mid);
-  });
-
-  it('retry header -> ignored, 0 new questions', async () => {
-    const before = await slackQuestions(cloneA);
-    const r = await slack(mention(`Eretry${uid()}`, teamA, `<@UBOT> ask ${handleA} retry`), { retry: '1' });
-    expect(r.status).toBe(200);
-    expect(await slackQuestions(cloneA)).toBe(before);
-  });
-
-  it('team A cannot reach a workspace B handle; unmapped team does nothing', async () => {
-    slackCalls.length = 0;
-    const before = await slackQuestions(cloneB);
-    expect((await slack(mention(`Ex${uid()}`, teamA, `<@UBOT> ask ${handleB} leak?`))).status).toBe(200);
-    expect((await slack(mention(`Eu${uid()}`, `TNOPE${uid()}`, `<@UBOT> ask ${handleA} hi`))).status).toBe(200);
-    expect(await slackQuestions(cloneB)).toBe(before);
-    expect(slackCalls.length).toBe(0);
-  });
-
-  it('processing failure frees the event_id so Slack can retry', async () => {
-    const id = `Efail${uid()}`;
-    await q(`REVOKE EXECUTE ON FUNCTION bureau.ask_question(uuid, text, uuid, text, text, uuid, uuid, bureau.question_source) FROM bureau_app`);
-    try {
-      const r = await slack(mention(id, teamA, `<@UBOT> ask ${handleA} will fail`));
-      expect(r.status).toBe(500);
-    } finally {
-      await q(`GRANT EXECUTE ON FUNCTION bureau.ask_question(uuid, text, uuid, text, text, uuid, uuid, bureau.question_source) TO bureau_app`);
-    }
-    expect(await eventStored(id)).toBe(0);
-  });
-});
+// Slack Events API coverage (signatures, replay window, dedupe, retries, routing, isolation)
+// lives in tests/slack-connect.test.ts.
 
 describe('Slack definer functions', () => {
   it('are not executable by PUBLIC/anon and pin search_path to bureau, pg_temp', async () => {

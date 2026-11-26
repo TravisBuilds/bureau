@@ -68,10 +68,13 @@ export function decryptActivity(envelope: string, workspaceId: string, userId: s
  * (or one integration) can't be replayed into another and still decrypt.
  *   purpose 'work'        -> parts [workspaceId, userId]       (work unit titles/details)
  *   purpose 'integration' -> parts [workspaceId, integrationId] (webhook secrets, API keys, refresh tokens)
+ *   purpose 'slack'       -> parts [workspaceId, slackTeamId]  (Slack bot tokens)
  */
 const scopedAad = (purpose: string, parts: string[]) => Buffer.from(`bureau-${purpose}:${parts.join(':')}`, 'utf8');
 
-export function encryptScoped(purpose: 'work' | 'integration', plaintext: string, parts: string[]): string {
+export type ScopedPurpose = 'work' | 'integration' | 'slack';
+
+export function encryptScoped(purpose: ScopedPurpose, plaintext: string, parts: string[]): string {
   const key = loadKey();
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -80,7 +83,7 @@ export function encryptScoped(purpose: 'work' | 'integration', plaintext: string
   return `v${ACTIVITY_KEY_VERSION}:${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${ct.toString('base64')}`;
 }
 
-export function decryptScoped(purpose: 'work' | 'integration', envelope: string, parts: string[]): string {
+export function decryptScoped(purpose: ScopedPurpose, envelope: string, parts: string[]): string {
   const p = envelope.split(':');
   if (p.length !== 4 || p[0] !== `v${ACTIVITY_KEY_VERSION}`) throw new Error('Unsupported ciphertext');
   const key = loadKey();

@@ -5,16 +5,17 @@
  * employees then have to acknowledge it again before more is logged.
  */
 
-export const ACTIVITY_POLICY_VERSION = '2026-11-25';
+// 2026-11-26: notice now also covers work pulled from connected tools (ground-truth capture).
+export const ACTIVITY_POLICY_VERSION = '2026-11-26';
 export const ACTIVITY_RETENTION_DAYS = 30;
 
 export const ACTIVITY_NOTICE = {
-  title: 'Your AI requests are logged to Bureau',
-  what: 'While this AI is connected, it records each request you make of it (what you asked, and a short note of what it did) in Bureau. Obvious secrets such as passwords, API keys and card numbers are removed before anything is saved.',
+  title: 'Your AI requests and work activity are logged to Bureau',
+  what: 'While this AI is connected, it records each request you make of it (what you asked, and a short note of what it did) in Bureau. Bureau also records work you do in tools your workspace connects (for example commits and pull requests in GitHub, deploys in Vercel, issues in Linear and Sentry, file edits in Google Drive, and voice or video generations in ElevenLabs and Higgsfield): the title, link, status and simple counts, never file contents or your generation prompts. Obvious secrets such as passwords, API keys and card numbers are removed before anything is saved.',
   why: 'To give your team leads a record of the work being done with AI, so they can see what people are working on and unblock them without asking for status updates.',
   who: 'You and your workspace owners and admins. Other teammates cannot see it.',
   retention: `Entries are encrypted and deleted automatically after ${ACTIVITY_RETENTION_DAYS} days.`,
-  control: 'You can mark any entry as personal on the My activity page, which erases its content for good. Tell your AI "this is personal" and it will log only that a personal request happened.',
+  control: 'You can mark any entry or work item as personal on the My activity page, which erases its content for good, and you can see there exactly what your owners and admins see about you and which tools are connected. Tell your AI "this is personal" and it will log only that a personal request happened.',
 } as const;
 
 /** Server-side: who to contact with questions (PIPA s. 10(1)(b)). Filled with the workspace owner. */
@@ -34,6 +35,7 @@ export const AGENT_LOGGING_INSTRUCTIONS = [
   'For EVERY message the user sends you, call the bureau_log_activity tool once, before or while you answer.',
   'Put a faithful one- or two-sentence description of what the user asked in "request" (include names, projects and files they mention; do not include passwords, keys or other secrets).',
   'If you take an action for them (send, edit, create, search, run something), describe it in "detail".',
+  'If you know which project it is for, pass "project"; if you produced something with a link (PR, deploy, doc, render), pass it in "artifact_url".',
   'If the user says a request is personal or off the record, still call the tool, with personal=true and request="personal".',
   'If the tool says consent_required, tell the user once that they need to accept the logging notice at Bureau (My activity page), then carry on helping.',
   'Do not ask the user for permission to log each time; the notice was accepted when they connected.',

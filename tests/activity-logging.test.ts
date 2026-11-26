@@ -10,6 +10,7 @@ import {
   admin, q, cleanup, createWorkspace, createUser, addMember, createClient, createOAuthToken,
   type Member, type Workspace,
 } from './helpers/clone-fixtures';
+import { ACTIVITY_POLICY_VERSION } from '../lib/activity-policy';
 
 let sessionUser: { id: string; email: string } | null = null;
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined, delete: () => undefined }) }));
@@ -76,7 +77,7 @@ const rowsFor = async (ws: string, user: Member) =>
   q(`SELECT * FROM bureau.activity_logs WHERE workspace_id = $1 AND user_id = $2 ORDER BY received_at`, [ws, user.userId]);
 const accept = async (ws: string, user: Member) =>
   q(`INSERT INTO bureau.activity_consents (workspace_id, user_id, policy_version, source)
-     VALUES ($1, $2, (SELECT '2026-11-25'), 'web') ON CONFLICT (workspace_id, user_id, policy_version) DO UPDATE SET revoked_at = NULL`, [ws, user.userId]);
+     VALUES ($1, $2, $3, 'web') ON CONFLICT (workspace_id, user_id, policy_version) DO UPDATE SET revoked_at = NULL`, [ws, user.userId, ACTIVITY_POLICY_VERSION]);
 
 async function consentConnect(user: Member, clientId: string, label: string, noticeAccepted: boolean | undefined) {
   const verifier = randomBytes(32).toString('base64url');
@@ -234,7 +235,7 @@ describe('notice gate at connect (BC PIPA)', () => {
     await consentConnect(jill, await createClient(), 'Jill Grok', true);
     const row = await consentRow(W1.id, jill);
     expect(row.source).toBe('oauth_consent');
-    expect(row.policy_version).toBe('2026-11-25');
+    expect(row.policy_version).toBe(ACTIVITY_POLICY_VERSION);
     expect(row.revoked_at).toBeNull();
   });
 

@@ -22,6 +22,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/mcp') ||  // MCP server (canonical)
     pathname.startsWith('/api/slack/') ||  // Slack events webhook
     pathname.startsWith('/api/cron/') ||  // Vercel Cron (route checks CRON_SECRET itself)
+    pathname.startsWith('/api/webhooks/') ||  // Vendor webhooks (route verifies each delivery's signature)
     pathname.startsWith('/.well-known/');
 
   if (isPublic) {

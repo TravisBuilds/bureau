@@ -1,8 +1,13 @@
 {
+  "_metadata": {
+    "major_version": 1,
+    "minor_version": 1
+  },
   "display_information": {
-    "name": "Bureau Digital Clone",
-    "description": "Connect your team's digital clones to Slack for async coordination",
-    "background_color": "#2c3e50"
+    "name": "Bureau",
+    "description": "Ask your team's Bureau from Slack: check-ins, questions and work digests.",
+    "long_description": "Bureau answers from your team's Bureau workspace: the latest check-ins from each teammate's AI, questions and answers, and the Team Work Board and digests built from GitHub, Vercel and other connected tools. Mention @Bureau in a channel, DM it, or use /bureau. Bureau only reads messages that mention it or are sent to it directly; it does not read channel history. Answers are built from Bureau data, without an AI model.",
+    "background_color": "#1f2937"
   },
   "features": {
     "app_home": {
@@ -13,15 +18,29 @@
     "bot_user": {
       "display_name": "Bureau",
       "always_online": true
-    }
+    },
+    "slash_commands": [
+      {
+        "command": "/bureau",
+        "url": "https://bureau-krustbuild.vercel.app/api/slack/commands",
+        "description": "Ask Bureau: status, ask, questions, answer, board, digest",
+        "usage_hint": "status jack | ask jack is the release on track? | digest weekly",
+        "should_escape": true
+      }
+    ]
   },
   "oauth_config": {
+    "redirect_urls": [
+      "https://bureau-krustbuild.vercel.app/api/slack/oauth/callback"
+    ],
     "scopes": {
       "bot": [
         "app_mentions:read",
         "chat:write",
+        "commands",
+        "im:history",
         "users:read",
-        "channels:read"
+        "users:read.email"
       ]
     }
   },
@@ -29,7 +48,10 @@
     "event_subscriptions": {
       "request_url": "https://bureau-krustbuild.vercel.app/api/slack/events",
       "bot_events": [
-        "app_mention"
+        "app_mention",
+        "message.im",
+        "app_uninstalled",
+        "tokens_revoked"
       ]
     },
     "org_deploy_enabled": false,

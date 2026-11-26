@@ -73,7 +73,7 @@ export interface LogInput {
   conversationRef?: string | null;
   occurredAt?: string | null;
   personal?: boolean;
-  source?: 'mcp_tool' | 'extension' | 'gateway' | 'compliance_api';
+  source?: 'mcp_tool' | 'extension' | 'gateway' | 'compliance_api' | 'slack';
 }
 
 export type LogResult =

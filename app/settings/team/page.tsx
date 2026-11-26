@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import SlackCard from './SlackCard';
 
 interface Member {
   user_id: string;
@@ -144,6 +145,8 @@ export default function TeamSettingsPage() {
             <p className="text-sm text-green-800">{success}</p>
           </div>
         )}
+
+        <SlackCard />
 
         {/* Invite Form */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">

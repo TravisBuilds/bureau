@@ -89,7 +89,7 @@ export default function ActivityPage() {
     load();
   }
   async function remove(id: string) {
-    if (!confirm('Delete this entry completely?')) return;
+    if (!confirm('Delete this entry completely? This erases it for good, not just hides it.')) return;
     await fetch(`/api/activity/${id}`, { method: 'DELETE' });
     load();
   }
@@ -233,11 +233,11 @@ export default function ActivityPage() {
         </div>
 
         <div className="mt-8 bg-white rounded-lg shadow p-4 text-sm">
-          <h2 className="font-semibold mb-2">Make your AI log every request</h2>
+          <h2 className="font-semibold mb-2">Make your AI log team work only</h2>
           <p className="text-gray-600 mb-2">
-            Bureau asks connected AIs to do this automatically. To make it stick, paste this into your AI&apos;s custom instructions
+            Bureau asks connected AIs to log work for this team, once per task, and to skip personal matters. Your own instruction wins: if you tell your AI not to log something, it will not. To make this stick, paste this into your AI&apos;s custom instructions
             (ChatGPT: Settings → Personalization; Claude: Settings → Profile or a Project&apos;s instructions; Grok Bot: tell it to remember this).
-            ChatGPT Plus and Pro can&apos;t send logs to outside apps, so this only works there on ChatGPT Business or Enterprise.
+            ChatGPT Plus and Pro can&apos;t send logs to outside apps, so this only works there on ChatGPT Business or Enterprise. If something personal slips through, delete it above; deleting erases it for good.
           </p>
           <pre className="bg-gray-100 rounded p-3 whitespace-pre-wrap text-xs">{AGENT_LOGGING_INSTRUCTIONS}</pre>
           <button

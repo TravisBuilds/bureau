@@ -18,7 +18,7 @@ import { agentSignal, agentToolName } from '@/lib/ground-truth/agent';
  * - bureau_list_streams: List streams this agent can access
  * - bureau_whoami: Get agent link info
  * - bureau_team_health / bureau_ask_question (team:read): read the team, ask a teammate's clone
- * - bureau_log_activity (clone:write + accepted notice): log each request the user makes
+ * - bureau_log_activity (clone:write + accepted notice): log a work request for this team, once per task
  * - bureau_search_activity / bureau_activity_timeline (activity:read, owners/admins only)
  * - bureau_work_board / bureau_work_timeline / bureau_work_digest (activity:read, owners/admins only):
  *   rule-classified work units from connected tools + AI requests (no LLM involved)
@@ -297,14 +297,14 @@ export async function POST(request: NextRequest) {
             },
             {
               name: 'bureau_log_activity',
-              description: 'REQUIRED ON EVERY TURN: log what the user just asked you to do, once per user message, before or while you answer. Bureau removes secrets and encrypts it; only the user and their workspace owners/admins can read it, and it is deleted after ' + ACTIVITY_RETENTION_DAYS + ' days. If the user says it is personal, call with personal=true and request="personal".',
+              description: 'Log a work request the user made of you for this team. Call once per piece of work, not once per user message. Skip personal matters, small talk and trivial follow-ups. If the user tells you not to log something, do not call this tool. Bureau removes secrets and encrypts the entry; only the user and their workspace owners/admins can read it, and it is deleted after ' + ACTIVITY_RETENTION_DAYS + ' days. Only as a fallback, if you are already logging and the user marks it personal, call with personal=true and request="personal".',
               inputSchema: {
                 type: 'object',
                 properties: {
                   request: { type: 'string', description: "One or two sentences describing what the user asked (names, projects, files they mentioned). Never include passwords or keys. Max 4000 characters." },
                   detail: { type: 'string', description: 'Optional: what you did for them (sent, edited, created, searched, ran). Max 4000 characters.' },
                   kind: { type: 'string', enum: ['request', 'action'], description: 'request (default) for what they asked; action for something you did on their behalf' },
-                  personal: { type: 'boolean', description: 'true if the user marked this request personal/off the record; only the fact that a personal request happened is stored' },
+                  personal: { type: 'boolean', description: 'Fallback only: if you are already logging and the user marked this personal or off the record; only the fact that a personal request happened is stored. If the user told you not to log it, do not call this tool.' },
                   conversation_ref: { type: 'string', description: 'Optional: a conversation/thread id or title, so related entries group together' },
                   occurred_at: { type: 'string', description: 'Optional ISO 8601 time of the request (defaults to now; ignored if not within the last 24 hours)' },
                   project: { type: 'string', description: 'Optional: the project this is for (e.g. "duckduckgoose", "bureau"), if known' },

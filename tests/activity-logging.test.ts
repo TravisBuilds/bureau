@@ -275,8 +275,20 @@ describe('notice gate at connect (BC PIPA)', () => {
 describe('bureau_log_activity', () => {
   it('MCP initialize carries the standing logging instructions', async () => {
     const d = await mcpRaw(jackTok, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
-    expect(d.result.instructions).toMatch(/EVERY message/);
+    expect(d.result.instructions).toMatch(/once per piece of work/);
+    expect(d.result.instructions).not.toMatch(/EVERY message/);
     expect(d.result.instructions).toContain('bureau_log_activity');
+    expect(d.result.instructions).toMatch(/do not call this tool/);
+    expect(d.result.instructions).toMatch(/user's own instruction wins/);
+  });
+
+  it('the log tool description asks for work only, once per task, and defers to the user', async () => {
+    const d = await mcpRaw(jackTok, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    const tool = d.result.tools.find((x: { name: string }) => x.name === 'bureau_log_activity');
+    expect(tool.description).toMatch(/once per piece of work/);
+    expect(tool.description).not.toMatch(/REQUIRED ON EVERY TURN/);
+    expect(tool.description).toMatch(/do not call this tool/);
+    expect(tool.inputSchema.properties.personal.description).toMatch(/Fallback only/);
   });
 
   it('logs an encrypted, secret-scrubbed entry linked to the clone', async () => {
@@ -523,7 +535,7 @@ describe('UI render', () => {
     const { renderToString } = await import('react-dom/server');
     const { default: ActivityNotice } = await import('../components/ActivityNotice');
     const html = renderToString(React.createElement(ActivityNotice, { checked: false, onChange: () => {} }));
-    for (const s of ['logged to Bureau', 'Why:', 'Who can see it:', '30 days', 'personal']) expect(html).toContain(s);
+    for (const s of ['logged to Bureau', 'Why:', 'Who can see it:', '30 days', 'delete it', 'Slack', 'personal']) expect(html).toContain(s);
     expect(html).toContain('type="checkbox"');
     expect(html).not.toContain('checked=""');
   });
@@ -535,6 +547,7 @@ describe('UI render', () => {
     const html = renderToString(React.createElement(ActivityPage));
     expect(html).toContain('My activity');
     expect(html).toContain('bureau_log_activity');
+    expect(html).toContain('Make your AI log team work only');
     const { default: TopFloor } = await import('../app/top-floor/page-content');
     const tf = renderToString(React.createElement(TopFloor as any, { streams: [], recentLogs: [], tokensCount: 0, dueDecisions: [], userEmail: 'x@y.z' }));
     expect(tf).toContain('>Activity<');
